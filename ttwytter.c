@@ -28,10 +28,14 @@ int parse_arguments(int argc, char **argv)
 {
   int c;
 
-  while ((c = getopt(argc, argv, "tc:qf:u:")) != -1)
+  while ((c = getopt(argc, argv, "Qtc:qf:u:")) != -1)
   {
     switch (c)
     {
+      case 'Q':
+        supress_output_flag = 1;
+
+        break;
       case 'q': 
         quiet_flag = 1; 
 

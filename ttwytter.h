@@ -28,6 +28,7 @@ unsigned short int get_tweet_flag = 0;
 unsigned short int post_tweet_flag = 0;
 unsigned short int quiet_flag = 0; //silences errors to the terminal. That which is sent to stdout still is output.
 unsigned short int time_flag = 0;
+unsigned short int supress_output_flag = 0; /* supresses all output in getting tweets except  */
     
 char *filename;
 
@@ -151,9 +152,13 @@ int parse_jason(char *response)
       screen_name = cJSON_GetObjectItem(child, "screen_name")->valuestring;
 
       output(stdout, "\"%s\" ", text); /* By doing this seperately, we have more control over the output. TODO: Put the output in it's own routine */
-      output(stdout, "by %s", screen_name);
+      
+      if (!supress_output_flag)
+      {   
+        output(stdout, "by %s", screen_name);
+      }
 
-      if (time_flag)
+      if (time_flag && !supress_output_flag)
       {
           output(stdout, " at %s", time_stamp);
       }
@@ -183,7 +188,7 @@ void output(FILE *stream, const char *format, ...) //outputs text. It's written 
     }
 }
 
-static size_t write_to_memory(void *response, size_t size, size_t nmemb, void *userp) //this is basically from libcurl's getinmemory.c example
+static size_t write_to_memory(void *response, size_t size, size_t nmemb, void *userp) /* this is basically from libcurl's getinmemory.c example */
 {
   size_t realsize = size * nmemb;
   struct Buffer *mem = (struct Buffer *)userp;
