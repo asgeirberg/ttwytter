@@ -27,6 +27,8 @@ unsigned short int user_flag = 0;
 unsigned short int get_tweet_flag = 0;
 unsigned short int post_tweet_flag = 0;
 unsigned short int quiet_flag = 0; //silences errors to the terminal. That which is sent to stdout still is output.
+unsigned short int time_flag = 0;
+    
 char *filename;
 
 //this is used by the callback function to reserve memory for the response.
@@ -112,10 +114,13 @@ int parse_jason(char *response)
 {
 
   cJSON *array, *root, *child;
-  char *text, *screen_name;  
+  char *text, *screen_name, *time_stamp;  
 
   root = cJSON_Parse(response);
-  
+
+  // char *test = cJSON_Print(root); */ this is here for debugging reasons */
+  // printf("%s\n", test);
+
   if (!root) 
   {
     printf("Error before: [%s]\n",cJSON_GetErrorPtr());
@@ -136,10 +141,24 @@ int parse_jason(char *response)
 
       //actual parsing
       text = cJSON_GetObjectItem(array, "text")->valuestring; //find the key we want
+
+      if (time_flag)
+      {
+          time_stamp = cJSON_GetObjectItem(array, "created_at")->valuestring;
+      }
+
       child = cJSON_GetObjectItem(array, "user");
       screen_name = cJSON_GetObjectItem(child, "screen_name")->valuestring;
-  
-      output(stdout, "\"%s\" by %s\n", text, screen_name);
+
+      output(stdout, "\"%s\" ", text); /* By doing this seperately, we have more control over the output. TODO: Put the output in it's own routine */
+      output(stdout, "by %s", screen_name);
+
+      if (time_flag)
+      {
+          output(stdout, " at %s", time_stamp);
+      }
+
+      output(stdout, "\n");
       
     }
 
@@ -159,7 +178,7 @@ void output(FILE *stream, const char *format, ...) //outputs text. It's written 
 
     if ((!quiet_flag && stream == stderr) || stream == stdout)
     {
-      fprintf(stream, "%s\r\n", msg);
+      fprintf(stream, "%s", msg);
       fflush(stream); 
     }
 }
