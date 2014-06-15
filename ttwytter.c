@@ -2,36 +2,55 @@
 
 int main (int argc, char **argv)
 {
-  response.memory = malloc(1);  /* will be grown as needed by the realloc above */ 
-  response.size = 0;    /* no data at this point */
+  
 
   init_libcurl(argc, argv);  /* initalize the keys */
   curl_global_init(CURL_GLOBAL_ALL);
-  CURL *curl = curl_easy_init();
+  
   
   if (parse_arguments(argc, argv) != 0)
   {
     return 1;
   }
 
-  if (get_tweet_flag == 1)
+  if (user_flag || file_flag ) /* By activating any of the 'get-data' flags, we go into that mode. */
   {
-    get_data(curl); /* get the tweet */
+    if (file_flag == 1)
+    {
+      read_from_file(filename, f);
+    }
+    else if (user_flag)
+    {
+        get_data(screen_name); /* get the tweet with the username set with -u*/
+    }
+  }
+  else if (user_flag == 0 && file_flag == 0)
+  {  
+      output(stderr, "Reading from stdin\n"); 
+      read_from_file(NULL, stdin);
   }  
 
   curl_global_cleanup(); /* do the cleaning up for libcurl */
+
+  free(count); /* this also frees the count set in the parse_arguments-function */
+  free(response.memory);
     
   return 0;
 }
 
-int parse_arguments(int argc, char **argv)
+int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-long */
 {
   int c;
 
-  while ((c = getopt(argc, argv, "Qtc:qf:u:")) != -1)
+  while ((c = getopt(argc, argv, "c:htQqu:f:")) != -1)
   {
     switch (c)
     {
+      case 'h':
+        printf("usage: ttwytter -c <number> -u <user name> -f <file> -Qqhtf\n");
+        exit(EXIT_SUCCESS);
+
+        break;
       case 'Q':
         supress_output_flag = 1;
 
@@ -44,10 +63,15 @@ int parse_arguments(int argc, char **argv)
         time_flag = 1;
 
         break;
-      case 'u':
-        get_tweet_flag = 1;
+      case 'f':
+        file_flag = 1;
+        filename = optarg;
 
-        if (strlen(optarg) < 16) //check the length of the input. Twitter only allows 15 chars.
+        break;
+      case 'u':
+        user_flag = 1;
+
+        if (strlen(optarg) < 16) /* check the length of the input. Twitter only allows 15 chars. */
         {
           screen_name = optarg;
         }
@@ -58,11 +82,7 @@ int parse_arguments(int argc, char **argv)
         }
 
         break;
-      case 'f':
-        filename = optarg;
-
-        break;
-      case 'c': //at present -c also accept strings as arguments. This should be restricted to integers. (The type of the argument is always a string)
+      case 'c': /* at present -c also accept strings as arguments. This should be restricted to integers. (The type of the argument is always a string) */
         if (strlen(optarg) < 5)
         {
           count = malloc(sizeof(char) * 4);
@@ -77,6 +97,8 @@ int parse_arguments(int argc, char **argv)
 
       break;
       case '?':
+        printf("errror\n");
+
         if (optopt == c)
         {
           output(stderr, "Option -%c requires an argument.\n", optopt);

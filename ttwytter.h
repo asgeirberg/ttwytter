@@ -9,10 +9,10 @@
 
 #define FORMAT_SIZE 5000
 
-//prototypes
 int init_libcurl(int argc,  char **argv); //this just initilizes some things needed for libcurl
-int get_data();
+int get_data(char *screen_name);
 int parse_jason(char *response); //parses the output from libcurl.
+int read_from_file(char *filename, FILE *f); /*reads input from file when -f is used. stdin is passed as the file pointer when -f is not used  */
 void output(FILE *stream, const char *output, ...);
 size_t static write_to_memory(void *response, size_t size, size_t nmemb, void *userp);
 int parse_arguments(int argc, char **argv);
@@ -22,17 +22,16 @@ char* consumer_secret = NULL;
 char* user_token = NULL;
 char* user_secret = NULL;
 
-//command line flags
+/* command line flags and arguments */
 unsigned short int user_flag = 0;
-unsigned short int get_tweet_flag = 0;
 unsigned short int post_tweet_flag = 0;
-unsigned short int quiet_flag = 0; //silences errors to the terminal. That which is sent to stdout still is output.
+unsigned short int quiet_flag = 0; /* silences errors to the terminal. That which is sent to stdout still is output. */
 unsigned short int time_flag = 0;
+unsigned short int file_flag = 0;
 unsigned short int supress_output_flag = 0; /* supresses all output in getting tweets except  */
-    
 char *filename;
 
-//this is used by the callback function to reserve memory for the response.
+/* this is used by write_to_memory() to reserve memory for the response. */
 struct Buffer {
   char *memory;
   size_t size;
@@ -40,11 +39,11 @@ struct Buffer {
 
 struct Buffer response;
 
-//function arguments after parsing
+/* function arguments after parsing */
 char *screen_name;
-char *count; //one is the default
+char *count;
 
-CURL *curl;
+//CURL *curl;
 
 FILE *f = NULL;
 
@@ -58,44 +57,49 @@ int init_libcurl(int argc, char **argv)
   return 0;
 }
 
-int get_data(CURL *curl)
+int get_data(char *screen_name)
 {
+  response.memory = malloc(1);  /* will be grown as needed by using realloc */ 
+  response.size = 0;    /* no data at this point */
+
+  CURL *curl = curl_easy_init();
 
   char *url = malloc(sizeof(char) * 256);
 
-  if (get_tweet_flag) /* build the url with a query string to get tweet*/
-  {
-    strcpy(url, "https://api.twitter.com/1.1/statuses/user_timeline.json");
-    strcat(url, "?screen_name=");
-    strcat(url, screen_name);
-    strcat(url, "&count=");
+  strcpy(url, "https://api.twitter.com/1.1/statuses/user_timeline.json");
+  strcat(url, "?screen_name=");
+  strcat(url, screen_name);
+  strcat(url, "&count=");
     
-    if (count == NULL) /* if count is not set by the user, 1 is put as default. */
-    {
-      count = malloc(sizeof(char) * 2);
-      strcpy(count, "1");
-    }
-
-    strcat(url, count);
-
-    free(count); /* this also frees the count set in the parse_arguments-function */
-
+  if (count == NULL) /* if count is not set by the user, 1 is put as default. */
+  {
+    count = malloc(sizeof(char) * 2);
+    strcpy(count, "1");
   }
+
+  strcat(url, count);
 
   char *signedurl = oauth_sign_url2(url, NULL, OA_HMAC, "GET", consumer_key, consumer_secret, user_token, user_secret);
 
   curl_easy_setopt(curl, CURLOPT_URL, signedurl); /* URL we're connecting to, after being signed by oauthlib */
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, "ttwytter/0.1"); // User agent we're going to use
-  curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1); // libcurl will now fail on an HTTP error (>=400)
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_memory); //setting a callback function to return the data
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&response); // passing the pointer to the response as the callback parameter
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "ttwytter/0.1"); /* User agent we're going to use */
+  curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1); /* libcurl will now fail on an HTTP error (>=400) */
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_memory); /* setting a callback function to return the data */
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&response); /* passing the pointer to the response as the callback parameter */
     
-  int curlstatus = curl_easy_perform(curl); // Execute the request!
+  int curlstatus = curl_easy_perform(curl); /* Execute the request! */
 
-  if (curlstatus != 0)
+  if (curlstatus != 0) /* this might be rewritten with a case structure, to better distinguish errors */
     {
-      printf("curl_easy_perform terminated with status code %d\n", curlstatus);
-
+      if (curlstatus == 22)
+      {
+        output(stderr, "No such user as %s", screen_name); 
+      }
+      else 
+      {
+        output(stderr, "curl_easy_perform terminated with status code %d\n", curlstatus); 
+      }  
+      
       return 1;
     }
   else
@@ -104,10 +108,9 @@ int get_data(CURL *curl)
     }
 
   curl_easy_cleanup(curl);
-
-  free(response.memory);
+  free (signedurl);
   free(url);
-        
+
   return 0;
 }
 
@@ -141,7 +144,7 @@ int parse_jason(char *response)
       }
 
       //actual parsing
-      text = cJSON_GetObjectItem(array, "text")->valuestring; //find the key we want
+      text = cJSON_GetObjectItem(array, "text")->valuestring; /* find the key we want */
 
       if (time_flag)
       {
@@ -167,13 +170,49 @@ int parse_jason(char *response)
       
     }
 
-    cJSON_Delete(root); //dereference the pointer
+    cJSON_Delete(root); /* dereference the pointer */
 
     return 0; 
     } 
 }
 
-void output(FILE *stream, const char *format, ...) //outputs text. It's written in this way to allow the q-flag in a simple way.
+int read_from_file(char *filename, FILE *f) /* reads input from file when -f is used or stdin when no argument is given*/
+{
+  size_t len = 0;
+  ssize_t read;
+  screen_name = malloc(sizeof(char) * 16);
+
+  if (filename != NULL) /* if filename is NULL, stdin is being used, and thus no need to open the file*/
+  {
+    f = fopen(filename, "r");
+    if (f == NULL)
+    {
+      printf("Error opening file %s.\n", filename);
+
+      return 1;
+    }
+  } 
+
+  while ((read = getline(&screen_name, &len, f)) != -1)
+  {
+    if (strlen(screen_name) > 16 )
+    {
+      output(stderr, "Error: Username must be less than 16 characters. Use -q to suppress this warning.\n", screen_name);
+      fflush (f);
+    }
+    else 
+    {
+      get_data(screen_name);
+    }
+  }
+  
+  free(screen_name);
+  fclose(f);
+
+  return 0;
+}
+
+void output(FILE *stream, const char *format, ...) /* outputs text. It's written in this way to allow the q-flag in a simple way. */
 {
     char msg[FORMAT_SIZE];
     va_list ap;
@@ -188,7 +227,7 @@ void output(FILE *stream, const char *format, ...) //outputs text. It's written 
     }
 }
 
-static size_t write_to_memory(void *response, size_t size, size_t nmemb, void *userp) /* this is basically from libcurl's getinmemory.c example */
+static size_t write_to_memory(void *response, size_t size, size_t nmemb, void *userp) /* this is basically from libcurl's getinmemory.c example. No reason to re-invent the wheel. */
 {
   size_t realsize = size * nmemb;
   struct Buffer *mem = (struct Buffer *)userp;
