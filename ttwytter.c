@@ -2,11 +2,11 @@
 
 int main (int argc, char **argv)
 {
-  
-
   init_libcurl(argc, argv);  /* initalize the keys */
   curl_global_init(CURL_GLOBAL_ALL);
-  
+
+  char *response_string;
+  Data *parsed_struct = NULL;
   
   if (parse_arguments(argc, argv) != 0)
   {
@@ -21,12 +21,14 @@ int main (int argc, char **argv)
     }
     else if (user_flag)
     {
-        get_data(screen_name); /* get the tweet with the username set with -u*/
+        response_string = get_data(screen_name); /* get the tweet with the username set with -u*/
+        parsed_struct = parse_json(response_string);
+        output_data(parsed_struct);
     }
   }
   else if (user_flag == 0 && file_flag == 0)
   {  
-      output(stderr, "Reading from stdin\n"); 
+      output(stderr, "Reading from stdin. Use 'ctrl-D' to send EOF\n"); 
       read_from_file(NULL, stdin);
   }  
 
@@ -34,6 +36,7 @@ int main (int argc, char **argv)
 
   free(count); /* this also frees the count set in the parse_arguments-function */
   free(response.memory);
+  free(parsed_struct);
     
   return 0;
 }
@@ -42,10 +45,14 @@ int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-lon
 {
   int c;
 
-  while ((c = getopt(argc, argv, "c:htQqu:f:")) != -1)
+  while ((c = getopt(argc, argv, "ac:htQqu:f:")) != -1)
   {
     switch (c)
     {
+      case 'a': 
+        alert_flag = 1; 
+
+        break;
       case 'h':
         printf("usage: ttwytter -c <number> -u <user name> -f <file> -Qqhtf\n");
         exit(EXIT_SUCCESS);
