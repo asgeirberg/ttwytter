@@ -15,7 +15,7 @@ int main (int argc, char **argv)
 
   if (user_flag || file_flag || mentions_flag || timeline_flag) /* By activating any of the 'get-data' flags, we go into that mode. */
   {
-    if (file_flag == 1)
+    if (file_flag)
     {
       ttwytter_read_from_file(filename, f);
     }
@@ -28,7 +28,7 @@ int main (int argc, char **argv)
       else
       {
 
-        if ((response_string = ttwytter_get_data(screen_name)) != NULL) /* get the tweet with the username set with -u*/
+        if ((response_string = ttwytter_get_data(screen_name)) != NULL) /* get the tweet with the username set with -u */
         {
           if ((parsed_struct = ttwytter_parse_json(response_string)) != NULL) /* Parse the arguments using the output from get_data() */
           {
@@ -36,21 +36,27 @@ int main (int argc, char **argv)
           }
           else
           {
-            ttwytter_output(stderr, "Error parsing data.");
+            ttwytter_output(stderr, "Error parsing data.\n");
           }
         }
         else
         {
-          ttwytter_output(stderr, "Error retreiving data.");
+          ttwytter_output(stderr, "Error retreiving data.\n");
         }
       }
     }
   }
-  else if (user_flag == 0 && file_flag == 0 && mentions_flag == 0 && timeline_flag == 0)
+  else if (!user_flag && !file_flag && !mentions_flag && !timeline_flag && !post_tweet_flag && !destroy_tweet_flag) /* if nothing is indicated by the user, we listen to stdin */
   {  
       ttwytter_output(stderr, "Reading from stdin. Use 'ctrl-D' to send EOF\n"); 
       ttwytter_read_from_file(NULL, stdin);
   }  
+
+  if (post_tweet_flag || destroy_tweet_flag)
+  {
+    //printf("%s\n", postdata); /* This is here for debugging purposes */
+    int curl_status = ttwytter_post_data(postdata);
+  }
 
   curl_global_cleanup(); /* do the cleaning up for libcurl */
 
@@ -65,7 +71,7 @@ int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-lon
 {
   int c;
 
-  while ((c = getopt(argc, argv, "ac:hlmtQqsu:f:")) != -1)
+  while ((c = getopt(argc, argv, "ac:d:hilmp:Qqstu:f:v")) != -1)
   {
     switch (c)
     {
@@ -87,22 +93,36 @@ int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-lon
         }
 
         break;
+      case 'd':
+        destroy_tweet_flag = 1;
+        postdata = optarg;
+
+        break; 
       case 'f':
         file_flag = 1;
         filename = optarg;
 
         break;
       case 'h':
-        printf("usage: ttwytter -c <number> -u <user name> -f <file> -ahlmtQqs\n");
+        printf("usage: ttwytter -c <number> -u <user name> -f <file> -p <\"tweet\"> -ahilmtQqsv\n");
         exit(EXIT_SUCCESS);
 
         break;
+      case 'i':
+        id_flag = 1;
+
+        break; 
       case 'l':
         timeline_flag = 1;
 
         break;
       case 'm':
         mentions_flag = 1;
+
+        break;
+      case 'p':
+        post_tweet_flag = 1;
+        postdata = optarg;
 
         break;
       case 'Q':
@@ -113,6 +133,10 @@ int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-lon
         quiet_flag = 1; 
 
         break;
+      case 's':
+        stream_flag = 1;
+        
+      break;
       case 't':
         time_flag = 1;
 
@@ -131,10 +155,10 @@ int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-lon
         }
 
         break;
-      case 's':
-        stream_flag = 1;
-        
-      break;
+      case 'v':
+        verbose_flag = 1;
+
+        break;
       case '?':
         printf("errror\n");
 

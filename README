@@ -1,1 +1,9 @@
 This will be a readme file in the future
+
+./ttwytter -l | grep -o '@[[:alnum:]]*' | sort -u | ./ttwytter -q
+
+TODO: 
+
+Add support for other users.
+Use getopt-long
+

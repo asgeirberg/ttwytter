@@ -11,9 +11,11 @@
 #define TWEET_SIZE 512
 
 /* Paths to the appropriate Twitter APIs.*/ 
-#define USER_TIMELINE "https://api.twitter.com/1.1/statuses/user_timeline.json"
-#define MENTIONS_TIMELINE "https://api.twitter.com/1.1/statuses/mentions_timeline.json"
-#define HOME_TIMELINE "https://api.twitter.com/1.1/statuses/home_timeline.json"
+#define USER_TIMELINE "https://api.twitter.com/1.1/statuses/user_timeline.json" /* gets last n tweets from a given user*/
+#define MENTIONS_TIMELINE "https://api.twitter.com/1.1/statuses/mentions_timeline.json" /* gets the last n mentions of the authenticated user*/
+#define HOME_TIMELINE "https://api.twitter.com/1.1/statuses/home_timeline.json" /* gets the last n tweets from the authenticated user's timeline*/
+#define POST_TWEET "https://api.twitter.com/1.1/statuses/update.json" /* posts tweets */
+#define DESTROY_TWEET "https://api.twitter.com/1.1/statuses/destroy/" /* destroy tweets */
 
 char* consumer_key = NULL;
 char* consumer_secret = NULL;
@@ -21,9 +23,11 @@ char* user_token = NULL;
 char* user_secret = NULL;
 
 /* command line flags and arguments */
+
 unsigned short int alert_flag = 0; /* plays alerts */
 unsigned short int user_flag = 0;
 unsigned short int post_tweet_flag = 0;
+unsigned short int destroy_tweet_flag = 0;
 unsigned short int quiet_flag = 0; /* silences errors to the terminal. That which is sent to stdout still is output. */
 unsigned short int time_flag = 0;
 unsigned short int file_flag = 0;
@@ -31,7 +35,10 @@ unsigned short int supress_output_flag = 0; /* supresses all output in getting t
 unsigned short int stream_flag = 0;
 unsigned short int mentions_flag = 0; /* Gets the last n mentions of the authenticated user */
 unsigned short int timeline_flag = 0; /* Gets the last n items in the authenticated user's timeline */
+unsigned short int verbose_flag = 0;
+unsigned short int id_flag = 0;
 char *filename;
+char *postdata;
 
 /* this is used by write_to_memory() to reserve memory for the response. */
 struct Buffer {
@@ -42,6 +49,7 @@ struct Buffer {
 struct Buffer response;
 
 struct Output {
+  int size; /* This is the size of the struct itself, used to keep track of the output in ttwytter_output_data(). It is set in ttwytter_parse_json()*/ 
   const char *text;
   const char *screen_name;
   const char *time_stamp; 
@@ -58,8 +66,12 @@ FILE *f = NULL;
 
 int ttwytter_init_libcurl(int argc,  char **argv); //this just initilizes some things needed for libcurl
 char *ttwytter_build_url(char *screen_name);
+char *ttwytter_build_header(char *url, char *url_enc_args);
+char *ttwytter_request(char *http_method, char *url, char *url_enc_args);
 char *ttwytter_get_data(char *screen_name);
+int ttwytter_post_data(char *tweet);
 Data *ttwytter_parse_json(char *response); //parses the output from libcurl.
+int twytter_check_curl_status(int curlstatus);
 int ttwytter_read_from_file(char *filename, FILE *f); /*reads input from file when -f is used. stdin is passed as the file pointer when -f is not used  */
 void ttwytter_output(FILE *stream, const char *output, ...);
 size_t static write_to_memory(void *response, size_t size, size_t nmemb, void *userp);
@@ -69,10 +81,10 @@ int parse_arguments(int argc, char **argv);
 
 int ttwytter_init_libcurl(int argc, char **argv)
 {
-  consumer_key = "scgvVzQDrwKfbZUZtepaZOvdz";
-  consumer_secret = "Ou0NfStxJxSjR0y1i0GuZHQUBQRd3e7yQ8LQrd0WROSrxTfhtc";
-  user_token = "1128798817-TdkOFKyFFuhUmu1SQNu58dokhm3ZdrTSHoYfcUq";
-  user_secret = "XQCTY1aro7vx3Hb14SLgLewYoiSyofDxqRFAlZAQou2qa";
+  consumer_key = "ztmB7Bda6O3EJcz1XYEC3NILX";
+  consumer_secret = "PsF8UXmCit7vReiLmWI2oP8uzyK9yJd527aGwPuWsf46dG3SJJ";
+  user_token = "1128798817-Z5EnXaAHX3dEs95tcVCXuohkIkv2Yxm6ELj8qTs";
+  user_secret = "liR9ZXq2c5OFIa2poMdyiGMUIX3jr3yPJDRWLGoCEcyHT";
 
   return 0;
 }
@@ -93,6 +105,10 @@ char *ttwytter_build_url(char *screen_name)
     }
 
     strcat(url, count);
+  }
+  else if (destroy_tweet_flag)
+  {
+
   }
   else if (mentions_flag)
   {
@@ -126,59 +142,198 @@ char *ttwytter_build_url(char *screen_name)
   return url;
 }
 
+// char* ttwytter_build_header(char *url, char *url_enc_args)
+// {
+//   char *postdata = NULL;
+//   struct curl_slist *slist = NULL;
+//   char * ser_url, **argv, *auth_params, *auth_header, *non_auth_params, *final_url, *temp_url;
+//   int argc;
+
+//   auth_header = malloc(1024);
+
+//   if (url_enc_args == NULL)  /* concatenate the url and any url-encoded arguments if*/ 
+//   {
+//     ser_url = malloc(strlen(url) + 1);
+//     strcpy(ser_url, url);
+//   }
+//   else 
+//   {
+//     ser_url = malloc(strlen(url) + strlen(url_enc_args) + 2); /* This is the general behaviour*/
+//     sprintf(ser_url, "%s?%s", url, url_enc_args);  
+//   }
+
+//   argv = malloc(0); /* oauth_split_url_parameters builds an array of URL encoded parameters from ser_url and stores it in argv  */ 
+//   argc = oauth_split_url_parameters(ser_url, &argv);
+//   free(ser_url);
+
+//   temp_url = oauth_sign_array2(&argc, &argv, NULL, OA_HMAC, "POST", consumer_key, consumer_secret, user_token, user_secret); /* Here we sign the array*/
+//   free(temp_url);
+
+//   auth_params = oauth_serialize_url_sep(argc, 1, argv, ", ", 6); /* Here we finally build the oauth header*/
+//   sprintf(auth_header, "Authorization: OAuth %s", auth_params );
+
+//   free(auth_params);
+
+//   return auth_header;
+// }
+
 char *ttwytter_get_data(char *screen_name)
 {
-  response.memory = malloc(1);  /* will be grown as needed by using realloc */ 
-  response.size = 0;    /* no data at this point */
+  if (user_flag)
+  {
+    return ttwytter_request("GET", USER_TIMELINE, screen_name);
+  }
+  else if (mentions_flag)
+  {
+    return ttwytter_request("GET", MENTIONS_TIMELINE, screen_name);
+  }
+  else if (timeline_flag)
+  {
+    return ttwytter_request("GET", HOME_TIMELINE, NULL);
+  }
+
+  return NULL;
+}
+
+int ttwytter_post_data(char *postdata)
+{
+  char *url_enc_args = NULL;
+
+  if (post_tweet_flag)
+  {
+    url_enc_args = malloc(sizeof(char) * 512);
+
+    sprintf(url_enc_args, "status=%s", postdata);
+    ttwytter_request("POST", POST_TWEET, url_enc_args);
+
+    free(url_enc_args);
+  }
+
+  if (destroy_tweet_flag)
+  {
+    url_enc_args = malloc(sizeof(char) * 512);
+
+    sprintf(url_enc_args, "%s.json", postdata);
+    ttwytter_request("POST", DESTROY_TWEET, url_enc_args); /* destroying tweets appends id.json to the url*/
+
+    free(url_enc_args);
+  }
+
+  return 0;
+}
+
+char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO: rewrite this to a more modular design, too much code is being reused */
+{
 
   CURL *curl = curl_easy_init();
 
-  char *url = ttwytter_build_url(screen_name); 
-  char *signedurl = oauth_sign_url2(url, NULL, OA_HMAC, "GET", consumer_key, consumer_secret, user_token, user_secret);
+  if (!strcmp(http_method, "GET"))
+  {
+    response.memory = malloc(1);  /* will be grown as needed by using realloc */ 
+    response.size = 0;    /* no data at this point */
 
-  curl_easy_setopt(curl, CURLOPT_URL, signedurl); /* URL we're connecting to, after being signed by oauthlib */
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, "ttwytter/0.3"); /* User agent we're going to use */
-  curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1); /* libcurl will now fail on an HTTP error (>=400) */
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_memory); /* setting a callback function to return the data */
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&response); /* passing the pointer to the response as the callback parameter */
-    
-  int curlstatus = curl_easy_perform(curl); /* Execute the request! */
+    char *url = ttwytter_build_url(url_enc_args); 
+    char *signedurl = oauth_sign_url2(url, NULL, OA_HMAC, "GET", consumer_key, consumer_secret, user_token, user_secret);
 
-  if (curlstatus != 0) /* this might be rewritten with a case structure, to better distinguish errors */
+    curl_easy_setopt(curl, CURLOPT_URL, signedurl); /* URL we're connecting to, after being signed by oauthlib */
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "ttwytter/0.4"); /* User agent we're going to use */
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1); /* libcurl will now fail on an HTTP error (>=400) */
+
+    if (verbose_flag)
     {
-      if (curlstatus == 22)
-      {
-        ttwytter_output(stderr, "No such user as %s", screen_name); 
-      }
-      else 
-      {
-        ttwytter_output(stderr, "curl_easy_perform terminated with status code %d\n", curlstatus); 
-      }  
-      return NULL;
+      curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
     }
 
-  curl_easy_cleanup(curl);
-  free (signedurl);
-  free(url);
+    free(url);
+  }
+  else if (!strcmp(http_method, "POST")) /* The code to build the header should be in its own function.*/
+  {
+    if (post_tweet_flag)
+    {
+      struct curl_slist * slist = NULL;
+      char * ser_url, **argv, *auth_params, auth_header[1024], *non_auth_params, *final_url, *temp_url;
+      int argc;
 
-  return response.memory;
+      if (url_enc_args == NULL)
+      {
+        ser_url = (char *) malloc(strlen(url) + 1);
+        strcpy(ser_url, url);
+      }
+      else
+      {
+        ser_url = (char *) malloc(strlen(url) + strlen(url_enc_args) + 2);
+        sprintf(ser_url, "%s?%s", url, url_enc_args);
+      }
+
+      argv = malloc(0);
+      argc = oauth_split_url_parameters(ser_url, &argv);
+      free(ser_url);
+
+      temp_url = oauth_sign_array2(&argc, &argv, NULL, OA_HMAC, http_method, consumer_key, consumer_secret, user_token, user_secret);
+      free(temp_url);
+
+      auth_params = oauth_serialize_url_sep(argc, 1, argv, ", ", 6);
+      sprintf( auth_header, "Authorization: OAuth %s", auth_params );
+      slist = curl_slist_append(slist, auth_header);
+      free(auth_params);
+
+      non_auth_params = oauth_serialize_url_sep(argc, 1, argv, "", 1 );
+
+      final_url = (char *) malloc( strlen(url) + strlen(non_auth_params) );
+
+      strcpy(final_url, url);
+      postdata = non_auth_params;
+
+      for (int i = 0; i < argc; i++ )
+      {
+        free(argv[i]);   
+      }
+      free(argv);
+
+      curl_easy_setopt(curl, CURLOPT_URL, url);
+      curl_easy_setopt(curl, CURLOPT_USERAGENT, "ttwytter/0.4"); /* User agent we're going to use */
+      curl_easy_setopt(curl, CURLOPT_HTTPHEADER, slist);
+      curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
+      curl_easy_setopt(curl, CURLOPT_POST, 1 );
+      curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata);
+
+      if (verbose_flag)
+      {
+        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
+      }
+    }  
+  }
+  else
+  {
+    ttwytter_output(stderr, "Invalid http-method.\n");
+  }
+  
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_memory); /* setting a callback function to return the data */
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&response); /* passing the pointer to the response as the callback parameter */ 
+
+  int curlstatus = curl_easy_perform(curl); /* Execute the request! */
+
+  curl_easy_cleanup(curl);
+
+  if (twytter_check_curl_status(curlstatus)) /* Handles error messages from cURL */
+  {
+    return NULL;
+  } 
+  else
+  {
+    return response.memory;  
+  }
 }
 
 Data *ttwytter_parse_json(char *response)
 {
-  
-  char *end;
-  int i_count = strtol(count, NULL, 10);
-  int i;
-
   json_t *root;
   json_error_t error;
 
   /* allocate memory for the output */
-  Data *parsed_struct = NULL;
-  parsed_struct = malloc(i_count * sizeof(Data));
-      
   root = json_loads(response, 0, &error);
+  Data *parsed_struct = NULL;
+  parsed_struct = malloc(json_array_size(root) * sizeof(Data));
 
   if (!root)
   {
@@ -217,8 +372,8 @@ Data *ttwytter_parse_json(char *response)
 
     if (time_flag)
     {
-    time_stamp_object = json_object_get(data, "created_at");
-    parsed_struct[i].time_stamp = strdup(json_string_value(time_stamp_object));
+      time_stamp_object = json_object_get(data, "created_at");
+      parsed_struct[i].time_stamp = strdup(json_string_value(time_stamp_object));
     }
 
     user_object = json_object_get(data, "user");
@@ -227,21 +382,38 @@ Data *ttwytter_parse_json(char *response)
   
   }
 
+parsed_struct[0].size = json_array_size(root); /* used in ttwytter_output_data to keep track of how much we received here. */
 json_decref(root);
 
 return parsed_struct; 
 }
 
-void ttwytter_output_data(Data *parsed_struct) /* Segfaults if -c is higher than the tweets actually received */
+int twytter_check_curl_status(int curlstatus)
 {
-  char *end;
-  int i_count = strtol(count, NULL, 10);
-  int i;
+  if (curlstatus != 0) /* this might be rewritten with a case structure, to better distinguish errors */
+    {
+      if (curlstatus == 22)
+      {
+        ttwytter_output(stderr, "No such user as %s.\n", screen_name); 
+      }
+      else 
+      {
+        ttwytter_output(stderr, "curl_easy_perform terminated with status code %d\n", curlstatus); 
+      }  
+      return 1;
+    }
+  return 0;  
+}
 
-  for (i = 0; i < i_count; ++i)
+void ttwytter_output_data(Data *parsed_struct)
+{
+  for (int i = 0; i < parsed_struct[0].size; ++i)
   {
-    ttwytter_output(stdout, "\"%s\" ", parsed_struct[i].text);
-      
+    if (1) /* Here we will put a real flag to supress text too. */
+    {  
+      ttwytter_output(stdout, "\"%s\" ", parsed_struct[i].text);
+    }  
+
     if (!supress_output_flag)
     {   
       ttwytter_output(stdout, "by %s", parsed_struct[i].screen_name);
@@ -250,6 +422,11 @@ void ttwytter_output_data(Data *parsed_struct) /* Segfaults if -c is higher than
     if (time_flag && !supress_output_flag)
     {
       ttwytter_output(stdout, " at %s", parsed_struct[i].time_stamp);
+    }
+
+    if (id_flag && !supress_output_flag)
+    {
+      ttwytter_output(stdout, " %s", parsed_struct[i].id_str); /* TODO: make this look nicer in the output */
     }
 
     ttwytter_output(stdout, "\n");
@@ -363,7 +540,7 @@ char *remove_first_char(char* string)
     }
 }
 
-int ttwytter_stream() /* This functions listens to any new tweets coming from the given username, given by -u*/
+int ttwytter_stream() /* This functions listens to any new tweets coming from the given username, given by -u */
 {
   Data *parsed_struct = NULL;
   Data *parsed_struct_first = NULL;
@@ -380,8 +557,8 @@ int ttwytter_stream() /* This functions listens to any new tweets coming from th
   int ready_for_reading = 0;
 
   /* Waiting for some seconds */
-  timeout.tv_sec = 30;    // 30 seconds is the default
-  timeout.tv_usec = 0;    // 0 milliseconds
+  timeout.tv_sec = 30;    /* 30 seconds is the default */
+  timeout.tv_usec = 0;    /* 0 milliseconds */
 
   char input;
   int len;
