@@ -2,24 +2,30 @@
 
 int main (int argc, char **argv)
 {
-  ttwytter_init_libcurl(argc, argv);  /* initalize the keys */
-  curl_global_init(CURL_GLOBAL_ALL);
-
   char *response_string;
   Data *parsed_struct = NULL;
+
+  curl_global_init(CURL_GLOBAL_ALL);
+
+  ttwytter_set_user(argc, argv);  /* Set the authenticating user */
+
+  if (print_user_flag)
+  {
+    ttwytter_output(stdout, "Authenticated as @%s.\n", user.screen_name);
+  }
   
   if (parse_arguments(argc, argv) != 0)
   {
     return 1;
   }
 
-  if (user_flag || file_flag || mentions_flag || timeline_flag) /* By activating any of the 'get-data' flags, we go into that mode. */
+  if (user_flag || file_flag || mentions_flag || timeline_flag || search_flag) /* By activating any of the 'get-data' flags, we go into that mode. */
   {
     if (file_flag)
     {
       ttwytter_read_from_file(filename, f);
     }
-    else if (user_flag || mentions_flag || timeline_flag)
+    else if (user_flag || mentions_flag || timeline_flag || search_flag)
     {
       if (stream_flag) /* Stream supersedes everything else */
       {
@@ -28,7 +34,7 @@ int main (int argc, char **argv)
       else
       {
 
-        if ((response_string = ttwytter_get_data(screen_name)) != NULL) /* get the tweet with the username set with -u */
+        if ((response_string = ttwytter_get_data(query)) != NULL) /* get the tweet with the username set with -u */
         {
           if ((parsed_struct = ttwytter_parse_json(response_string)) != NULL) /* Parse the arguments using the output from get_data() */
           {
@@ -71,7 +77,7 @@ int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-lon
 {
   int c;
 
-  while ((c = getopt(argc, argv, "ac:d:hilmp:Qqstu:f:v")) != -1)
+  while ((c = getopt(argc, argv, "ac:d:e:hilmp:Qqstu:f:v")) != -1)
   {
     switch (c)
     {
@@ -96,6 +102,12 @@ int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-lon
       case 'd':
         destroy_tweet_flag = 1;
         postdata = optarg;
+
+        break;
+      case 'e':
+        search_flag = 1;
+        printf("%s\n", query);
+        query = optarg;
 
         break; 
       case 'f':
@@ -122,7 +134,16 @@ int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-lon
         break;
       case 'p':
         post_tweet_flag = 1;
-        postdata = optarg;
+
+        if (strlen(optarg) < 141)
+        {
+          postdata = optarg;
+        }
+        else
+        {
+          ttwytter_output(stderr, "%s is more than 140 characters long.\n", optarg); /* Test this properly, Twitter counts this differently.*/
+          exit(EXIT_SUCCESS);
+        }
 
         break;
       case 'Q':
@@ -146,12 +167,12 @@ int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-lon
 
         if (strlen(optarg) < 16) /* check the length of the input. Twitter only allows 15 chars. */
         {
-          screen_name = remove_first_char(optarg);
+          query = remove_first_char(optarg);
         }
         else
         {
           ttwytter_output(stderr, "%s is too long. Only 15 characters are allowed.\n", optarg);
-          return 1;
+          exit(EXIT_SUCCESS);
         }
 
         break;

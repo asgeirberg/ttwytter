@@ -10,22 +10,38 @@
 #define FORMAT_SIZE 5000
 #define TWEET_SIZE 512
 
-/* Paths to the appropriate Twitter APIs.*/ 
+#define USER_KEYFILE "user.keyfile"
+
+/* Paths to the appropriate Twitter API calls.*/ 
 #define USER_TIMELINE "https://api.twitter.com/1.1/statuses/user_timeline.json" /* gets last n tweets from a given user*/
 #define MENTIONS_TIMELINE "https://api.twitter.com/1.1/statuses/mentions_timeline.json" /* gets the last n mentions of the authenticated user*/
 #define HOME_TIMELINE "https://api.twitter.com/1.1/statuses/home_timeline.json" /* gets the last n tweets from the authenticated user's timeline*/
 #define POST_TWEET "https://api.twitter.com/1.1/statuses/update.json" /* posts tweets */
 #define DESTROY_TWEET "https://api.twitter.com/1.1/statuses/destroy/" /* destroy tweets */
+#define SEARCH_TWEETS "https://api.twitter.com/1.1/search/tweets.json" /* search for tweets*/
 
-char* consumer_key = NULL;
-char* consumer_secret = NULL;
-char* user_token = NULL;
-char* user_secret = NULL;
+/* Paths to the appropriate oauth urls.*/ 
+#define REQUEST_TOKEN "https://api.twitter.com/oauth/request_token" /* Request an oauth token.*/
+#define AUTHENTICATE_URL "https://api.twitter.com/oauth/authenticate" /* URL the user needs to visit */
+#define ACCESS_URL "https://api.twitter.com/oauth/access_token" /* Sends the pin to reiceive the final tokens. */
+
+/* API keys for the program*/
+#define CONSUMER_KEY "ztmB7Bda6O3EJcz1XYEC3NILX"
+#define CONSUMER_SECRET "PsF8UXmCit7vReiLmWI2oP8uzyK9yJd527aGwPuWsf46dG3SJJ"
+
+/* This struct is for information about the authenticating user */
+struct User {
+  char screen_name[64];
+  char user_token[64];
+  char user_secret[64];
+};
+
+struct User user;
 
 /* command line flags and arguments */
-
 unsigned short int alert_flag = 0; /* plays alerts */
 unsigned short int user_flag = 0;
+unsigned short int search_flag = 0;
 unsigned short int post_tweet_flag = 0;
 unsigned short int destroy_tweet_flag = 0;
 unsigned short int quiet_flag = 0; /* silences errors to the terminal. That which is sent to stdout still is output. */
@@ -37,10 +53,11 @@ unsigned short int mentions_flag = 0; /* Gets the last n mentions of the authent
 unsigned short int timeline_flag = 0; /* Gets the last n items in the authenticated user's timeline */
 unsigned short int verbose_flag = 0;
 unsigned short int id_flag = 0;
+unsigned short int print_user_flag = 0;
 char *filename;
 char *postdata;
 
-/* this is used by write_to_memory() to reserve memory for the response. */
+/* this is used by write_to_memory() to reserve memory for the response we get from the Twitter API. */
 struct Buffer {
   char *memory;
   size_t size;
@@ -59,137 +76,138 @@ struct Output {
 typedef struct Output Data;
 
 /* function arguments after parsing */
-char *screen_name;
+char *query;
 char *count;
 
 FILE *f = NULL;
 
-int ttwytter_init_libcurl(int argc,  char **argv); //this just initilizes some things needed for libcurl
-char *ttwytter_build_url(char *screen_name);
-char *ttwytter_build_header(char *url, char *url_enc_args);
+/* main functions */
+int ttwytter_set_user(int argc,  char **argv); /* sets up the authenitcated user */
+int ttwytter_authenticate(); /* authenticates the user */
 char *ttwytter_request(char *http_method, char *url, char *url_enc_args);
-char *ttwytter_get_data(char *screen_name);
+char *ttwytter_get_data(char *query);
 int ttwytter_post_data(char *tweet);
 Data *ttwytter_parse_json(char *response); //parses the output from libcurl.
-int twytter_check_curl_status(int curlstatus);
 int ttwytter_read_from_file(char *filename, FILE *f); /*reads input from file when -f is used. stdin is passed as the file pointer when -f is not used  */
+int parse_arguments(int argc, char **argv);
+
+/* auxiliary functions */
+char *ttwytter_build_url(char *query); 
+char *ttwytter_build_header(char *url, char *url_enc_args);
+int twytter_check_curl_status(int curlstatus);
 void ttwytter_output(FILE *stream, const char *output, ...);
 size_t static write_to_memory(void *response, size_t size, size_t nmemb, void *userp);
 char *remove_first_char(char* string);
-int parse_arguments(int argc, char **argv);
+int twytter_get_char(void);
 
 
-int ttwytter_init_libcurl(int argc, char **argv)
+int ttwytter_set_user(int argc, char **argv)
 {
-  consumer_key = "ztmB7Bda6O3EJcz1XYEC3NILX";
-  consumer_secret = "PsF8UXmCit7vReiLmWI2oP8uzyK9yJd527aGwPuWsf46dG3SJJ";
-  user_token = "1128798817-Z5EnXaAHX3dEs95tcVCXuohkIkv2Yxm6ELj8qTs";
-  user_secret = "liR9ZXq2c5OFIa2poMdyiGMUIX3jr3yPJDRWLGoCEcyHT";
+
+  FILE *f, *g;
+  struct User temp;
+
+  if ( access(USER_KEYFILE, F_OK ) == -1 )
+  {
+    ttwytter_output(stderr,"Keyfile not found. Authenticate with Twitter? y/n\n");
+    fflush (stdout);
+
+    int c = twytter_get_char();
+
+    if (c == 'y')
+    {
+      ttwytter_authenticate();
+
+      if ((f = fopen(USER_KEYFILE, "w")) != NULL)
+      {
+        fwrite(&user, sizeof(struct User), 1, f);
+      }
+
+      fclose(f);
+    }
+    else
+    {
+      return 1;
+    }
+  }
+  else
+  {
+    if ((f = fopen(USER_KEYFILE, "r")) != NULL)
+    {
+      fread(&user, sizeof(struct User), 1, f);
+    }
+    fclose(f);
+  }
+  
+  return 0;
+}
+
+int ttwytter_authenticate() /* This function will authenticate the user */ 
+{
+  char *request_response, *authenticate_response, *request_token, oauth_verifier[64];
+  char **argv = malloc(0);
+  int argc, pincode;
+
+  request_response = ttwytter_request("POST", REQUEST_TOKEN, "oauth_callback=oob"); /* This doesn't actally mean that the method is "POST". */
+  argc = oauth_split_url_parameters(request_response, &argv);                       /* Just that it needed to share code with the rest of the POST code. */
+                                                                                    /* request() should be rewritten to a more natural structure.*/ 
+                                                                                         
+  /* temporary set the user access token for the final auth-call. These will be replaced by the final tokens after the pin is sent. */
+  strcpy(user.user_token, (strrchr(argv[0], '=') + 1));
+  strcpy(user.user_secret, (strrchr(argv[1], '=') + 1));
+       
+  printf("To authorize, visit this URL, log in to your Twitter account, and enter the pin provided:\n" );
+  printf("%s?%s\n", AUTHENTICATE_URL, argv[0]);
+  printf("Enter PIN: " );
+  scanf("%d", &pincode ); /* Needs to be made safer, without scanf and verifying input. */ 
+
+  sprintf(oauth_verifier, "oauth_verifier=%d", pincode );
+
+  for (int i = 0; i < argc; i++)
+  {
+    free(argv[i]);
+  }
+  free(argv);
+
+  authenticate_response = ttwytter_request("POST", ACCESS_URL, oauth_verifier);
+
+  /* Copies the correct user keys from the response. This is very sensitive to the output of the response. A better parsing function might be better.*/
+
+  argv = malloc(0);
+  argc = oauth_split_url_parameters(authenticate_response, &argv);  
+
+  strcpy(user.user_token, (strrchr(argv[2], '=') + 1));
+  strcpy(user.user_secret, (strrchr(argv[3], '=') + 1)); 
+  strcpy(user.screen_name, (strrchr(argv[5], '=') + 1));
+
+  printf("Authentication successful. Authenticated as @%s.\n", user.screen_name); /* Needs to do more robust error checking. */
+
+  for (int i = 0; i < argc; i++)
+  {
+    free(argv[i]);
+  }
+  free(argv);                                               
 
   return 0;
 }
 
-char *ttwytter_build_url(char *screen_name)
+char *ttwytter_get_data(char *query)
 {
-  char *url = malloc(sizeof(char) * 256);
-
-  if (timeline_flag)
+  if (user_flag || file_flag)
   {
-    strcpy(url, HOME_TIMELINE);
-    strcat(url, "&count=");
-    
-    if (count == NULL) /* if count is not set by the user, 5 is put as default. */
-    {
-      count = malloc(sizeof(char) * 2);
-      strcpy(count, "5");
-    }
-
-    strcat(url, count);
+    return ttwytter_request("GET", USER_TIMELINE, query);
   }
-  else if (destroy_tweet_flag)
+  else if (mentions_flag) /* Needs to check if any user is authenticated */
   {
-
+    return ttwytter_request("GET", MENTIONS_TIMELINE, query);
   }
-  else if (mentions_flag)
-  {
-    strcpy(url, MENTIONS_TIMELINE);
-    strcat(url, "&count=");
-    
-    if (count == NULL) /* if count is not set by the user, 5 is put as default. */
-    {
-      count = malloc(sizeof(char) * 2);
-      strcpy(count, "5");
-    }
-
-    strcat(url, count);
-  }
-  else
-  {
-    strcpy(url, USER_TIMELINE);
-    strcat(url, "?screen_name=");
-    strcat(url, screen_name);
-    strcat(url, "&count=");
-    
-    if (count == NULL) /* if count is not set by the user, 1 is put as default. */
-    {
-      count = malloc(sizeof(char) * 2);
-      strcpy(count, "1");
-    }
-
-    strcat(url, count);
-  }
-
-  return url;
-}
-
-// char* ttwytter_build_header(char *url, char *url_enc_args)
-// {
-//   char *postdata = NULL;
-//   struct curl_slist *slist = NULL;
-//   char * ser_url, **argv, *auth_params, *auth_header, *non_auth_params, *final_url, *temp_url;
-//   int argc;
-
-//   auth_header = malloc(1024);
-
-//   if (url_enc_args == NULL)  /* concatenate the url and any url-encoded arguments if*/ 
-//   {
-//     ser_url = malloc(strlen(url) + 1);
-//     strcpy(ser_url, url);
-//   }
-//   else 
-//   {
-//     ser_url = malloc(strlen(url) + strlen(url_enc_args) + 2); /* This is the general behaviour*/
-//     sprintf(ser_url, "%s?%s", url, url_enc_args);  
-//   }
-
-//   argv = malloc(0); /* oauth_split_url_parameters builds an array of URL encoded parameters from ser_url and stores it in argv  */ 
-//   argc = oauth_split_url_parameters(ser_url, &argv);
-//   free(ser_url);
-
-//   temp_url = oauth_sign_array2(&argc, &argv, NULL, OA_HMAC, "POST", consumer_key, consumer_secret, user_token, user_secret); /* Here we sign the array*/
-//   free(temp_url);
-
-//   auth_params = oauth_serialize_url_sep(argc, 1, argv, ", ", 6); /* Here we finally build the oauth header*/
-//   sprintf(auth_header, "Authorization: OAuth %s", auth_params );
-
-//   free(auth_params);
-
-//   return auth_header;
-// }
-
-char *ttwytter_get_data(char *screen_name)
-{
-  if (user_flag)
-  {
-    return ttwytter_request("GET", USER_TIMELINE, screen_name);
-  }
-  else if (mentions_flag)
-  {
-    return ttwytter_request("GET", MENTIONS_TIMELINE, screen_name);
-  }
-  else if (timeline_flag)
+  else if (timeline_flag) /* Needs to check if any user is authenticated */
   {
     return ttwytter_request("GET", HOME_TIMELINE, NULL);
+  }
+  else if (search_flag)
+  {  
+    return ttwytter_request("GET", SEARCH_TWEETS, query);
   }
 
   return NULL;
@@ -199,12 +217,12 @@ int ttwytter_post_data(char *postdata)
 {
   char *url_enc_args = NULL;
 
-  if (post_tweet_flag)
+  if (post_tweet_flag) /* Needs to check if any user is authenticated */
   {
     url_enc_args = malloc(sizeof(char) * 512);
 
     sprintf(url_enc_args, "status=%s", postdata);
-    ttwytter_request("POST", POST_TWEET, url_enc_args);
+    ttwytter_request("POST", POST_TWEET, oauth_url_escape(url_enc_args));
 
     free(url_enc_args);
   }
@@ -222,9 +240,8 @@ int ttwytter_post_data(char *postdata)
   return 0;
 }
 
-char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO: rewrite this to a more modular design, too much code is being reused */
+char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO: rewrite this to a more modular design, too much code is being reused. */
 {
-
   CURL *curl = curl_easy_init();
 
   if (!strcmp(http_method, "GET"))
@@ -233,22 +250,19 @@ char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO
     response.size = 0;    /* no data at this point */
 
     char *url = ttwytter_build_url(url_enc_args); 
-    char *signedurl = oauth_sign_url2(url, NULL, OA_HMAC, "GET", consumer_key, consumer_secret, user_token, user_secret);
-
+    char *signedurl = oauth_sign_url2(url, NULL, OA_HMAC, http_method, CONSUMER_KEY, CONSUMER_SECRET, user.user_token, user.user_secret);
     curl_easy_setopt(curl, CURLOPT_URL, signedurl); /* URL we're connecting to, after being signed by oauthlib */
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "ttwytter/0.4"); /* User agent we're going to use */
-    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1); /* libcurl will now fail on an HTTP error (>=400) */
+    
+    free(url);
 
     if (verbose_flag)
     {
       curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
     }
-
-    free(url);
   }
   else if (!strcmp(http_method, "POST")) /* The code to build the header should be in its own function.*/
   {
-    if (post_tweet_flag)
+    if (post_tweet_flag || !strcmp(url, REQUEST_TOKEN) || !strcmp(url, ACCESS_URL))
     {
       struct curl_slist * slist = NULL;
       char * ser_url, **argv, *auth_params, auth_header[1024], *non_auth_params, *final_url, *temp_url;
@@ -266,12 +280,29 @@ char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO
       }
 
       argv = malloc(0);
-      argc = oauth_split_url_parameters(ser_url, &argv);
+      argc = oauth_split_post_paramters(ser_url, &argv, 1);
+
       free(ser_url);
 
-      temp_url = oauth_sign_array2(&argc, &argv, NULL, OA_HMAC, http_method, consumer_key, consumer_secret, user_token, user_secret);
-      free(temp_url);
+      if (!strcmp(url, REQUEST_TOKEN))
+      {
+        http_method = "GET";
+        temp_url = oauth_sign_array2(&argc, &argv, NULL, OA_HMAC, http_method, CONSUMER_KEY, CONSUMER_SECRET, NULL, NULL);
+        free(temp_url);
 
+      }
+      else if (!strcmp(url, ACCESS_URL))
+      {
+        http_method = "GET";
+        temp_url = oauth_sign_array2(&argc, &argv, NULL, OA_HMAC, http_method, CONSUMER_KEY, CONSUMER_SECRET, user.user_token, user.user_secret);
+        free(temp_url);
+      }
+      else
+      {
+        temp_url = oauth_sign_array2(&argc, &argv, NULL, OA_HMAC, http_method, CONSUMER_KEY, CONSUMER_SECRET, user.user_token, user.user_secret);
+        free(temp_url);
+      }
+      
       auth_params = oauth_serialize_url_sep(argc, 1, argv, ", ", 6);
       sprintf( auth_header, "Authorization: OAuth %s", auth_params );
       slist = curl_slist_append(slist, auth_header);
@@ -291,12 +322,16 @@ char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO
       free(argv);
 
       curl_easy_setopt(curl, CURLOPT_URL, url);
-      curl_easy_setopt(curl, CURLOPT_USERAGENT, "ttwytter/0.4"); /* User agent we're going to use */
       curl_easy_setopt(curl, CURLOPT_HTTPHEADER, slist);
       curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
-      curl_easy_setopt(curl, CURLOPT_POST, 1 );
-      curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata);
 
+
+      if (!strcmp(http_method, "POST"))
+      {
+        curl_easy_setopt(curl, CURLOPT_POST, 1 );
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata);
+      }
+      
       if (verbose_flag)
       {
         curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
@@ -306,8 +341,12 @@ char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO
   else
   {
     ttwytter_output(stderr, "Invalid http-method.\n");
+
+    return NULL;
   }
   
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "ttwytter/0.4"); /* User agent we're going to use */
+  curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1); /* libcurl will now fail on an HTTP error (>=400) */
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_memory); /* setting a callback function to return the data */
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&response); /* passing the pointer to the response as the callback parameter */ 
 
@@ -315,7 +354,7 @@ char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO
 
   curl_easy_cleanup(curl);
 
-  if (twytter_check_curl_status(curlstatus)) /* Handles error messages from cURL */
+  if (twytter_check_curl_status(curlstatus))  /* Handles error messages from cURL */
   {
     return NULL;
   } 
@@ -388,23 +427,6 @@ json_decref(root);
 return parsed_struct; 
 }
 
-int twytter_check_curl_status(int curlstatus)
-{
-  if (curlstatus != 0) /* this might be rewritten with a case structure, to better distinguish errors */
-    {
-      if (curlstatus == 22)
-      {
-        ttwytter_output(stderr, "No such user as %s.\n", screen_name); 
-      }
-      else 
-      {
-        ttwytter_output(stderr, "curl_easy_perform terminated with status code %d\n", curlstatus); 
-      }  
-      return 1;
-    }
-  return 0;  
-}
-
 void ttwytter_output_data(Data *parsed_struct)
 {
   for (int i = 0; i < parsed_struct[0].size; ++i)
@@ -442,7 +464,7 @@ int ttwytter_read_from_file(char *filename, FILE *f) /* reads input from file wh
 {
   size_t len = 0;
   ssize_t read;
-  screen_name = malloc(sizeof(char) * 16);
+  char *screen_name = malloc(sizeof(char) * 16);
 
   char *response_string;
   Data *parsed_struct = NULL;
@@ -506,40 +528,6 @@ void ttwytter_output(FILE *stream, const char *format, ...) /* outputs text. It'
     }
 }
 
-static size_t write_to_memory(void *response, size_t size, size_t nmemb, void *userp) /* this is basically from libcurl's getinmemory.c example. No reason to re-invent the wheel. */
-{
-  size_t realsize = size * nmemb;
-  struct Buffer *mem = (struct Buffer *)userp;
- 
-  mem->memory = realloc(mem->memory, mem->size + realsize + 1);
-
-  if (mem->memory == NULL)
-  {
-    /* out of memory! */ 
-    ttwytter_output(stderr, "Not enough memory (realloc returned NULL in write_to_memory() )\n");
-
-    return 0;
-  }
- 
-  memcpy(&(mem->memory[mem->size]), response, realsize);
-  mem->size += realsize;
-  mem->memory[mem->size] = 0;
- 
-  return realsize;
-}
-
-char *remove_first_char(char* string)
-{
-    if (*string == '@' || *string == '#')
-    {
-        return string + 1;
-    }
-    else
-    {
-        return string;
-    }
-}
-
 int ttwytter_stream() /* This functions listens to any new tweets coming from the given username, given by -u */
 {
   Data *parsed_struct = NULL;
@@ -563,8 +551,8 @@ int ttwytter_stream() /* This functions listens to any new tweets coming from th
   char input;
   int len;
 
-  ttwytter_output(stderr, "Listening to stream @%s. Use 'ctrl-D' to send EOF and break the stream.\n", screen_name);
-  first_response = ttwytter_get_data(screen_name); /* get the last tweet to compare with what we get to the stream. We only print new tweets. */
+  ttwytter_output(stderr, "Listening to stream @%s. Use 'ctrl-D' to send EOF and break the stream.\n", query);
+  first_response = ttwytter_get_data(query); /* get the last tweet to compare with what we get to the stream. We only print new tweets. */
   parsed_struct_first = ttwytter_parse_json(first_response);
 
   strlcpy(temp, parsed_struct_first[0].id_str, TWEET_SIZE);
@@ -590,7 +578,7 @@ int ttwytter_stream() /* This functions listens to any new tweets coming from th
 
         // if (input != EOF)
         // {
-          if ((response = ttwytter_get_data(screen_name)) != NULL) /* get the tweet with the username set with -u*/
+          if ((response = ttwytter_get_data(query)) != NULL) /* get the tweet with the username set with -u*/
           {
             if ((parsed_struct = ttwytter_parse_json(response)) != NULL)
             {
@@ -609,6 +597,134 @@ int ttwytter_stream() /* This functions listens to any new tweets coming from th
    free(temp);
 
    return 0;
+}
+
+char *ttwytter_build_url(char *screen_name) //screen name is outdated as variable name and only causes confusion, change to query
+{
+  char *url = malloc(sizeof(char) * 256); /* get rid of this magic numner */
+
+  if (timeline_flag)
+  {
+    strcpy(url, HOME_TIMELINE);
+    strcat(url, "&count=");
+    
+    if (count == NULL) /* if count is not set by the user, 5 is put as default. */
+    {
+      count = malloc(sizeof(char) * 2);
+      strcpy(count, "5");
+    }
+
+    strcat(url, count);
+  }
+  else if (destroy_tweet_flag)
+  {
+
+  }
+  else if (mentions_flag)
+  {
+    strcpy(url, MENTIONS_TIMELINE);
+    strcat(url, "&count=");
+    
+    if (count == NULL) /* if count is not set by the user, 5 is put as default. */
+    {
+      count = malloc(sizeof(char) * 2);
+      strcpy(count, "5");
+    }
+
+    strcat(url, count);
+  }
+  else if (search_flag)
+  {
+    strcpy(url, SEARCH_TWEETS);
+    strcat(url, "?q=");
+    strcat(url, screen_name);
+  }
+  else
+  {
+    strcpy(url, USER_TIMELINE);
+    strcat(url, "?screen_name=");
+    strcat(url, screen_name);
+    strcat(url, "&count=");
+    
+    if (count == NULL) /* if count is not set by the user, 1 is put as default. */
+    {
+      count = malloc(sizeof(char) * 2);
+      strcpy(count, "1");
+    }
+
+    strcat(url, count);
+  }
+
+  return url;
+}
+
+int twytter_check_curl_status(int curlstatus)
+{
+  if (curlstatus != 0) /* this might be rewritten with a case structure, to better distinguish errors */
+    {
+      if (curlstatus == 22)
+      {
+        ttwytter_output(stderr, "No such user as %s.\n", query); 
+      }
+      else 
+      {
+        ttwytter_output(stderr, "curl_easy_perform terminated with status code %d\n", curlstatus); 
+      }  
+      return 1;
+    }
+  return 0;  
+}
+
+char *remove_first_char(char* string)
+{
+    if (*string == '@' || *string == '#')
+    {
+        return string + 1;
+    }
+    else
+    {
+        return string;
+    }
+}
+
+static size_t write_to_memory(void *response, size_t size, size_t nmemb, void *userp) /* this is basically from libcurl's getinmemory.c example. No reason to re-invent the wheel. */
+{
+  size_t realsize = size * nmemb;
+  struct Buffer *mem = (struct Buffer *)userp;
+ 
+  mem->memory = realloc(mem->memory, mem->size + realsize + 1);
+
+  if (mem->memory == NULL)
+  {
+    /* out of memory! */ 
+    ttwytter_output(stderr, "Not enough memory (realloc returned NULL in write_to_memory() )\n");
+
+    return 0;
+  }
+ 
+  memcpy(&(mem->memory[mem->size]), response, realsize);
+  mem->size += realsize;
+  mem->memory[mem->size] = 0;
+ 
+  return realsize;
+}
+
+int twytter_get_char(void)
+{
+    int c;
+    int answer = 0;
+    while ((c = getchar()) != EOF && c != '\n')
+    {
+        if (answer == 0 && (c == 'y' || c == 'n' || c == 'N' || c == 'Y'))
+        {
+          answer = c;
+        } 
+        else
+        {
+          /* ?check for garbage here and complain? */
+        }
+    }
+    return answer;
 }
 
 // int get_feed(char *screen_name) /* Parsing doesn't work. -e switches this on.*/ 
