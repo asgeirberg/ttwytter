@@ -7,18 +7,23 @@ int main (int argc, char **argv)
 
   curl_global_init(CURL_GLOBAL_ALL);
 
-  ttwytter_set_user(argc, argv);  /* Set the authenticating user */
+  if (parse_arguments_long(argc, argv) != 0)
+  {
+    return 1;
+  }
+
+  if (ttwytter_set_user(argc, argv) != 0)  /* Set the authenticating user */
+  {
+    ttwytter_output(stderr, "Couldn't set user.\n");
+
+    return 1;
+  }
 
   if (print_user_flag)
   {
     ttwytter_output(stdout, "Authenticated as @%s.\n", user.screen_name);
   }
   
-  if (parse_arguments(argc, argv) != 0)
-  {
-    return 1;
-  }
-
   if (user_flag || file_flag || mentions_flag || timeline_flag || search_flag) /* By activating any of the 'get-data' flags, we go into that mode. */
   {
     if (file_flag)
@@ -72,125 +77,3 @@ int main (int argc, char **argv)
     
   return 0;
 }
-
-int parse_arguments(int argc, char **argv) /* TODO: rewrite this with getopt-long */
-{
-  int c;
-
-  while ((c = getopt(argc, argv, "ac:d:e:hilmp:Qqstu:f:v")) != -1)
-  {
-    switch (c)
-    {
-      case 'a': 
-        alert_flag = 1; 
-
-        break;
-      case 'c': /* at present -c also accept strings as arguments. This should be restricted to integers. (The type of the argument is always a string) */
-        if (strlen(optarg) < 5)
-        {
-          count = malloc(sizeof(char) * 4);
-          strcpy(count, optarg);
-        }
-        else
-        {
-          printf("-c only accepts arguments up to 9999.\n");
-
-          return 1;
-        }
-
-        break;
-      case 'd':
-        destroy_tweet_flag = 1;
-        postdata = optarg;
-
-        break;
-      case 'e':
-        search_flag = 1;
-        printf("%s\n", query);
-        query = optarg;
-
-        break; 
-      case 'f':
-        file_flag = 1;
-        filename = optarg;
-
-        break;
-      case 'h':
-        printf("usage: ttwytter -c <number> -u <user name> -f <file> -p <\"tweet\"> -ahilmtQqsv\n");
-        exit(EXIT_SUCCESS);
-
-        break;
-      case 'i':
-        id_flag = 1;
-
-        break; 
-      case 'l':
-        timeline_flag = 1;
-
-        break;
-      case 'm':
-        mentions_flag = 1;
-
-        break;
-      case 'p':
-        post_tweet_flag = 1;
-
-        if (strlen(optarg) < 141)
-        {
-          postdata = optarg;
-        }
-        else
-        {
-          ttwytter_output(stderr, "%s is more than 140 characters long.\n", optarg); /* Test this properly, Twitter counts this differently.*/
-          exit(EXIT_SUCCESS);
-        }
-
-        break;
-      case 'Q':
-        supress_output_flag = 1;
-
-        break;
-      case 'q': 
-        quiet_flag = 1; 
-
-        break;
-      case 's':
-        stream_flag = 1;
-        
-      break;
-      case 't':
-        time_flag = 1;
-
-        break;
-      case 'u':
-        user_flag = 1;
-
-        if (strlen(optarg) < 16) /* check the length of the input. Twitter only allows 15 chars. */
-        {
-          query = remove_first_char(optarg);
-        }
-        else
-        {
-          ttwytter_output(stderr, "%s is too long. Only 15 characters are allowed.\n", optarg);
-          exit(EXIT_SUCCESS);
-        }
-
-        break;
-      case 'v':
-        verbose_flag = 1;
-
-        break;
-      case '?':
-        printf("errror\n");
-
-        if (optopt == c)
-        {
-          ttwytter_output(stderr, "Option -%c requires an argument.\n", optopt);
-        }
-      return 1;
-    }
-  }
-  return 0;
-}
-
-

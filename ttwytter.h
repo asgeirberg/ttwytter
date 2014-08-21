@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <getopt.h>
 #include <oauth.h>
 #include <curl/curl.h>
 #include <stdarg.h>
@@ -39,6 +40,7 @@ struct User {
 struct User user;
 
 /* command line flags and arguments */
+static int follow_flag, unfollow_flag; /* These are different because the have no short option associated with them */
 unsigned short int alert_flag = 0; /* plays alerts */
 unsigned short int user_flag = 0;
 unsigned short int search_flag = 0;
@@ -90,6 +92,7 @@ int ttwytter_post_data(char *tweet);
 Data *ttwytter_parse_json(char *response); //parses the output from libcurl.
 int ttwytter_read_from_file(char *filename, FILE *f); /*reads input from file when -f is used. stdin is passed as the file pointer when -f is not used  */
 int parse_arguments(int argc, char **argv);
+int parse_arguments_long(int argc, char **argv);
 
 /* auxiliary functions */
 char *ttwytter_build_url(char *query); 
@@ -100,6 +103,188 @@ size_t static write_to_memory(void *response, size_t size, size_t nmemb, void *u
 char *remove_first_char(char* string);
 int twytter_get_char(void);
 
+int parse_arguments_long(int argc, char **argv)
+{
+  int c; 
+
+       while (1)
+         {
+           static struct option long_options[] =
+             {
+
+              {"follow",     no_argument,          &follow_flag,   1},
+              {"unfollow",   no_argument,          &unfollow_flag, 1},
+               /* These options don't set a flag.
+                  We distinguish them by their indices. */
+              {"alert",      no_argument,        0, 'a'},
+              {"count",      required_argument,  0, 'c'},
+              {"delete",     required_argument,  0, 'd'},
+              {"search",     required_argument,  0, 'e'},
+              {"file",       required_argument,  0, 'f'},
+              {"auth",       no_argument,        0, 'g'},
+              {"help",       no_argument,        0, 'h'},
+              {"id",         no_argument,        0, 'i'},
+              {"timeline",   no_argument,        0, 'l'},
+              {"mentions",   no_argument,        0, 'm'},
+              {"post",       optional_argument,  0, 'p'},
+              {"nometadata", no_argument,        0, 'Q'},
+              {"quiet",      no_argument,        0, 'q'},
+              {"stream",     no_argument,        0, 's'},
+              {"time",       no_argument,        0, 't'},
+              {"user",       required_argument,  0, 'u'},
+              {"verbose",    no_argument,        0, 'v'},
+              {0, 0, 0, 0}
+             };
+           /* getopt_long stores the option index here. */
+           int option_index = 0;
+     
+           c = getopt_long_only (argc, argv, "ac:d:e:f:ghilmp:Qqstu:v",
+                            long_options, &option_index);
+     
+           /* Detect the end of the options. */
+           if (c == -1)
+             break;
+     
+           switch (c)
+             {
+             case 0:
+               /* If this option set a flag, do nothing else now. */
+               if (long_options[option_index].flag != 0)
+                 break;
+               printf ("option %s", long_options[option_index].name);
+               if (optarg)
+                 printf (" with arg %s", optarg);
+               printf ("\n");
+               break;
+     
+             case 'a': 
+              alert_flag = 1; 
+
+              break;
+            case 'c': /* at present -c also accept strings as arguments. This should be restricted to integers. (The type of the argument is always a string) */
+              if (strlen(optarg) < 5)
+              {
+                count = malloc(sizeof(char) * 4);
+                strcpy(count, optarg);
+              }
+              else
+              {
+                printf("-c only accepts arguments up to 9999.\n");
+
+                return 1;
+              }
+
+              break;
+            case 'd':
+              destroy_tweet_flag = 1;
+              postdata = optarg;
+
+              break;
+            case 'e':
+              search_flag = 1;
+              printf("%s\n", query);
+              query = optarg;
+
+              break; 
+            case 'f':
+              file_flag = 1;
+              filename = optarg;
+
+              break;
+            case 'g':
+              print_user_flag = 1;
+
+              break;
+            case 'h':
+              printf("usage: ttwytter -c <number> -u <user name> -f <file> -p <\"tweet\"> -ahilmtQqsv\n");
+              exit(EXIT_SUCCESS);
+
+              break;
+            case 'i':
+              id_flag = 1;
+
+              break; 
+            case 'l':
+              timeline_flag = 1;
+
+              break;
+            case 'm':
+              mentions_flag = 1;
+
+              break;
+            case 'p':
+              post_tweet_flag = 1;
+
+              if (strlen(optarg) < 141)
+              {
+                postdata = optarg;
+              }
+              else
+              {
+                ttwytter_output(stderr, "%s is more than 140 characters long.\n", optarg); /* Test this properly, Twitter counts this differently.*/
+                exit(EXIT_SUCCESS);
+              }
+
+              break;
+            case 'Q': /* Causes only text to be output, no metadata */
+              supress_output_flag = 1;
+
+              break;
+            case 'q': 
+              quiet_flag = 1; 
+
+              break;
+            case 's':
+              stream_flag = 1;
+        
+              break;
+            case 't':
+              time_flag = 1;
+
+              break;
+            case 'u':
+              user_flag = 1;
+
+              if (strlen(optarg) < 16) /* check the length of the input. Twitter only allows 15 chars. */
+              {
+                query = remove_first_char(optarg);
+              }
+              else
+              {   
+                ttwytter_output(stderr, "%s is too long. Only 15 characters are allowed.\n", optarg);
+              
+                exit(EXIT_SUCCESS);
+              }
+
+              break;
+            case 'v':
+              verbose_flag = 1;
+     
+            case '?':
+              printf("usage: ttwytter -c <number> -u <user name> -f <file> -p <\"tweet\"> -ahilmtQqsv\n");
+              exit(EXIT_FAILURE);
+
+            /* getopt_long already printed an error message. */
+              break;
+     
+            default:
+              exit(EXIT_FAILURE);
+            }
+         }
+     
+       /* Print any remaining command line arguments (not options). */
+       if (optind < argc)
+         {
+           printf ("non-option ARGV-elements: ");
+           while (optind < argc)
+             printf ("%s ", argv[optind++]);
+           putchar ('\n');
+
+           return 1;
+         }
+     
+       return 0;
+}
 
 int ttwytter_set_user(int argc, char **argv)
 {
@@ -156,9 +341,9 @@ int ttwytter_authenticate() /* This function will authenticate the user */
   strcpy(user.user_token, (strrchr(argv[0], '=') + 1));
   strcpy(user.user_secret, (strrchr(argv[1], '=') + 1));
        
-  printf("To authorize, visit this URL, log in to your Twitter account, and enter the pin provided:\n" );
-  printf("%s?%s\n", AUTHENTICATE_URL, argv[0]);
-  printf("Enter PIN: " );
+  ttwytter_output(stdout, "To authorize, visit this URL, log in to your Twitter account, and enter the pin provided:\n" );
+  ttwytter_output(stdout, "%s?%s\n", AUTHENTICATE_URL, argv[0]);
+  ttwytter_output(stdout, "Enter PIN: " );
   scanf("%d", &pincode ); /* Needs to be made safer, without scanf and verifying input. */ 
 
   sprintf(oauth_verifier, "oauth_verifier=%d", pincode );
@@ -180,7 +365,7 @@ int ttwytter_authenticate() /* This function will authenticate the user */
   strcpy(user.user_secret, (strrchr(argv[3], '=') + 1)); 
   strcpy(user.screen_name, (strrchr(argv[5], '=') + 1));
 
-  printf("Authentication successful. Authenticated as @%s.\n", user.screen_name); /* Needs to do more robust error checking. */
+  ttwytter_output(stderr, "Authentication successful. Authenticated as @%s.\n", user.screen_name); /* Needs to do more robust error checking. */
 
   for (int i = 0; i < argc; i++)
   {
