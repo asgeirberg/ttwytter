@@ -57,7 +57,7 @@ int main (int argc, char **argv)
       }
     }
   }
-  else if (!user_flag && !file_flag && !mentions_flag && !timeline_flag && !post_tweet_flag && !destroy_tweet_flag) /* if nothing is indicated by the user, we listen to stdin */
+  else if (read_from_stdin) /* if nothing is indicated by the user, we listen to stdin */
   {  
       ttwytter_output(stderr, "Reading from stdin. Use 'ctrl-D' to send EOF\n"); 
       ttwytter_read_from_file(NULL, stdin);

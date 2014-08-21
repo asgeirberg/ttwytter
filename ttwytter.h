@@ -56,6 +56,8 @@ unsigned short int timeline_flag = 0; /* Gets the last n items in the authentica
 unsigned short int verbose_flag = 0;
 unsigned short int id_flag = 0;
 unsigned short int print_user_flag = 0;
+unsigned short int read_from_stdin = 0;
+
 char *filename;
 char *postdata;
 
@@ -215,14 +217,21 @@ int parse_arguments_long(int argc, char **argv)
             case 'p':
               post_tweet_flag = 1;
 
-              if (strlen(optarg) < 141)
+              if (optarg == NULL)
               {
-                postdata = optarg;
+                read_from_stdin = 1;
               }
               else
               {
-                ttwytter_output(stderr, "%s is more than 140 characters long.\n", optarg); /* Test this properly, Twitter counts this differently.*/
-                exit(EXIT_SUCCESS);
+                if (strlen(optarg) < 141)
+                {
+                  postdata = optarg;
+                }
+                else
+                {
+                  ttwytter_output(stderr, "%s is more than 140 characters long.\n", optarg); /* Test this properly, Twitter counts this differently.*/
+                  exit(EXIT_SUCCESS);
+                }
               }
 
               break;
@@ -245,17 +254,24 @@ int parse_arguments_long(int argc, char **argv)
             case 'u':
               user_flag = 1;
 
-              if (strlen(optarg) < 16) /* check the length of the input. Twitter only allows 15 chars. */
+              if (optarg == NULL)
               {
-                query = remove_first_char(optarg);
+                read_from_stdin = 1;
               }
               else
-              {   
-                ttwytter_output(stderr, "%s is too long. Only 15 characters are allowed.\n", optarg);
+              {
+                if (strlen(optarg) < 16) /* check the length of the input. Twitter only allows 15 chars. */
+                {
+                  query = remove_first_char(optarg);
+                }
+                else
+                {   
+                  ttwytter_output(stderr, "%s is too long. Only 15 characters are allowed.\n", optarg);
               
-                exit(EXIT_SUCCESS);
+                  exit(EXIT_SUCCESS);
+                }
               }
-
+              
               break;
             case 'v':
               verbose_flag = 1;
