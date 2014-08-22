@@ -24,7 +24,7 @@ int main (int argc, char **argv)
     ttwytter_output(stdout, "Authenticated as @%s.\n", user.screen_name);
   }
   
-  if (user_flag || file_flag || mentions_flag || timeline_flag || search_flag) /* By activating any of the 'get-data' flags, we go into that mode. */
+  if ((user_flag || file_flag || mentions_flag || timeline_flag || search_flag) && !read_from_stdin) /* By activating any of the 'get-data' flags, we go into that mode. */
   {
     if (file_flag)
     {
@@ -57,13 +57,13 @@ int main (int argc, char **argv)
       }
     }
   }
-  else if (read_from_stdin) /* if nothing is indicated by the user, we listen to stdin */
-  {  
+  else if (read_from_stdin) /* if -u or -p are not given arguments, we listen to stdin */
+  { 
       ttwytter_output(stderr, "Reading from stdin. Use 'ctrl-D' to send EOF\n"); 
       ttwytter_read_from_file(NULL, stdin);
   }  
 
-  if (post_tweet_flag || destroy_tweet_flag)
+  if ((post_tweet_flag && !read_from_stdin) || destroy_tweet_flag)
   {
     //printf("%s\n", postdata); /* This is here for debugging purposes */
     int curl_status = ttwytter_post_data(postdata);

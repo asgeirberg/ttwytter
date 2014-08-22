@@ -93,6 +93,7 @@ char *ttwytter_get_data(char *query);
 int ttwytter_post_data(char *tweet);
 Data *ttwytter_parse_json(char *response); //parses the output from libcurl.
 int ttwytter_read_from_file(char *filename, FILE *f); /*reads input from file when -f is used. stdin is passed as the file pointer when -f is not used  */
+int ttwytter_post_from_file(char *filename, FILE *f);
 int parse_arguments(int argc, char **argv);
 int parse_arguments_long(int argc, char **argv);
 
@@ -133,14 +134,14 @@ int parse_arguments_long(int argc, char **argv)
               {"quiet",      no_argument,        0, 'q'},
               {"stream",     no_argument,        0, 's'},
               {"time",       no_argument,        0, 't'},
-              {"user",       required_argument,  0, 'u'},
+              {"user",       optional_argument,  0, 'u'},
               {"verbose",    no_argument,        0, 'v'},
               {0, 0, 0, 0}
              };
            /* getopt_long stores the option index here. */
            int option_index = 0;
      
-           c = getopt_long_only (argc, argv, "ac:d:e:f:ghilmp:Qqstu:v",
+           c = getopt_long_only (argc, argv, "ac:d:e:f:ghilmp::Qqstu::v",
                             long_options, &option_index);
      
            /* Detect the end of the options. */
@@ -665,7 +666,6 @@ int ttwytter_read_from_file(char *filename, FILE *f) /* reads input from file wh
 {
   size_t len = 0;
   ssize_t read;
-  char *screen_name = malloc(sizeof(char) * 16);
 
   char *response_string;
   Data *parsed_struct = NULL;
@@ -681,34 +681,54 @@ int ttwytter_read_from_file(char *filename, FILE *f) /* reads input from file wh
     }
   } 
 
-  while ((read = getline(&screen_name, &len, f)) != -1)
+  char *query = NULL;
+
+  while ((read = getline(&query, &len, f)) != -1)
   {
-    if (strlen(screen_name) > 16 )
+    if (user_flag)
     {
-      ttwytter_output(stderr, "Error: Username must be less than 16 characters. Use -q to suppress this warning.\n", screen_name);
-      fflush (f);
-    }
-    else 
-    {
-      if ((response_string = ttwytter_get_data(remove_first_char(screen_name))) != NULL) /* get the tweet with the username set with -u*/
+      query = malloc(sizeof(char) * 16);
+
+      if (strlen(query) > 16 )
       {
-        if ((parsed_struct = ttwytter_parse_json(response_string)) != NULL)
+        ttwytter_output(stderr, "Error: Username must be less than 16 characters. Use -q to suppress this warning.\n", query);
+        fflush (f);
+      }
+      else 
+      {
+        if ((response_string = ttwytter_get_data(remove_first_char(query))) != NULL) /* get the tweet with the username set with -u*/
         {
-          ttwytter_output_data(parsed_struct);
+          if ((parsed_struct = ttwytter_parse_json(response_string)) != NULL)
+          {
+            ttwytter_output_data(parsed_struct);
+          }
+          else
+          {
+            ttwytter_output(stderr, "Error parsing data.\n"); 
+          }
         }
         else
         {
-          ttwytter_output(stderr, "Error parsing data."); 
+          ttwytter_output(stderr, "Error retreiving data.\n");
         }
+      }
+    }
+    else if (post_tweet_flag)
+    {
+      query = malloc(sizeof(char) * 141);
+
+      if (strlen(query) > 141)
+      {
+        ttwytter_post_data(query);
       }
       else
       {
-          ttwytter_output(stderr, "Error retreiving data.");
+        ttwytter_output(stderr, "Tweet is too long and was not posted.\n")
       }
     }
   }
   
-  free(screen_name);
+  free(query);
   fclose(f);
 
   return 0;

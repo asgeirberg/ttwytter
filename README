@@ -1,9 +1,74 @@
-This will be a readme file in the future
 
-./ttwytter -l | grep -o '@[[:alnum:]]*' | sort -u | ./ttwytter -q
+Ttwytter is a console-based Twitter client for UNIX, written in C. It’s design philosophy is to interact well with the UNIX environment and other UNIX programs. See Examples below for examples of what this means.
 
-TODO: 
+Homepage: http://mygithub.io
 
-Add support for other users.
-Use getopt-long
+TODO: 	Implement searching for tweets.
+	Allow following and unfollowing.
+	Get list of whom you follow and list of followers.
+	Track responses from curl better.
+	Make sure all input is safe.
+	Make the makefiles and config scripts.
 
+Dependencies:
+============
+
+To compile Twytter from source you need the following libraries:
+ * libcurl — for handling http requests.
+ * liboauth — to authenticate with Twitter.
+ * Jansson — to parse the JSON Twitter returns.
+
+Installation:
+============
+
+$ cd ttwytter-$VERSION
+$ ./configure
+$ make
+$ make install
+
+Usage:
+============
+
+To be written.
+
+Examples:
+============
+
+Get the last 15 tweets on your timeline and print them to a file:
+./ttwytter -l -c 15 >> timeline.txt
+
+Get a list of who you follow and unfollow them all (could be filtered somehow too):
+./ttwytter —-followerlist | ./ttwytter —-unfollow
+
+Get tweets from a list of usernames: 
+cat usernames.txt | ./ttwytter —-user 
+
+Extract all mentions in your timeline and get tweets from them: 
+./ttwytter -l | grep -o '@[[:alnum:]]*' | sort -u | ./ttwytter —-user -q
+
+Copyright: 
+============
+
+Ttwytter: a console-based Twitter client for UNIX.
+
+****************************************************************************
+  
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details. 
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+See the file COPYING for more info.
+
+****************************************************************************
+
+Copyright (C) 2014 Ásgeir Berg Matthíasson.
