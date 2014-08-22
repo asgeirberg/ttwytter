@@ -1,11 +1,13 @@
 
-Ttwytter is a console-based Twitter client for UNIX, written in C. It’s design philosophy is to interact well with the UNIX environment and other UNIX programs. See Examples below for examples of what this means.
+Ttwytter is a console-based Twitter client for UNIX, written in C. 
+It’s design philosophy is to interact well with the UNIX environment and other UNIX programs. 
+See Examples below for examples of what this means.
 
 Homepage: http://mygithub.io
 
 TODO: 	Implement searching for tweets.
 	Allow following and unfollowing.
-	Get list of whom you follow and list of followers.
+	Get list of whom (or any user) you follow and list of followers.
 	Track responses from curl better.
 	Make sure all input is safe.
 	Make the makefiles and config scripts.

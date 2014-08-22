@@ -94,8 +94,7 @@ int ttwytter_post_data(char *tweet);
 Data *ttwytter_parse_json(char *response); //parses the output from libcurl.
 int ttwytter_read_from_file(char *filename, FILE *f); /*reads input from file when -f is used. stdin is passed as the file pointer when -f is not used  */
 int ttwytter_post_from_file(char *filename, FILE *f);
-int parse_arguments(int argc, char **argv);
-int parse_arguments_long(int argc, char **argv);
+int ttwytter_parse_arguments(int argc, char **argv);
 
 /* auxiliary functions */
 char *ttwytter_build_url(char *query); 
@@ -104,9 +103,10 @@ int twytter_check_curl_status(int curlstatus);
 void ttwytter_output(FILE *stream, const char *output, ...);
 size_t static write_to_memory(void *response, size_t size, size_t nmemb, void *userp);
 char *remove_first_char(char* string);
+char *remove_newline(char* string);
 int twytter_get_char(void);
 
-int parse_arguments_long(int argc, char **argv)
+int ttwytter_parse_arguments(int argc, char **argv)
 {
   int c; 
 
@@ -681,7 +681,7 @@ int ttwytter_read_from_file(char *filename, FILE *f) /* reads input from file wh
     }
   } 
 
-  char *query = NULL;
+  char *query = malloc(sizeof(char) * 141);
 
   while ((read = getline(&query, &len, f)) != -1)
   {
@@ -715,15 +715,13 @@ int ttwytter_read_from_file(char *filename, FILE *f) /* reads input from file wh
     }
     else if (post_tweet_flag)
     {
-      query = malloc(sizeof(char) * 141);
-
-      if (strlen(query) > 141)
+      if (strlen(query) < 141)
       {
-        ttwytter_post_data(query);
+        ttwytter_post_data(remove_newline(query));
       }
       else
       {
-        ttwytter_output(stderr, "Tweet is too long and was not posted.\n")
+        ttwytter_output(stderr, "Tweet is too long and was not posted.\n");
       }
     }
   }
@@ -906,6 +904,18 @@ char *remove_first_char(char* string)
     {
         return string;
     }
+}
+
+char *remove_newline(char* string)
+{
+  size_t ln = strlen(string) - 1;
+
+  if (ln != 0 && string[ln] == '\n')
+  {
+    string[ln] = '\0';  
+  }
+    
+  return string;
 }
 
 static size_t write_to_memory(void *response, size_t size, size_t nmemb, void *userp) /* this is basically from libcurl's getinmemory.c example. No reason to re-invent the wheel. */
