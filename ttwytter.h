@@ -10,18 +10,19 @@
 
 #define FORMAT_SIZE 5000
 #define TWEET_SIZE 512
+#define USERNAME_SIZE 16
 
-#define USER_KEYFILE "user.keyfile"
-
-/* Paths to the appropriate Twitter API calls.*/ 
+/* Paths to the appropriate Twitter API calls*/ 
 #define USER_TIMELINE "https://api.twitter.com/1.1/statuses/user_timeline.json" /* gets last n tweets from a given user*/
 #define MENTIONS_TIMELINE "https://api.twitter.com/1.1/statuses/mentions_timeline.json" /* gets the last n mentions of the authenticated user*/
 #define HOME_TIMELINE "https://api.twitter.com/1.1/statuses/home_timeline.json" /* gets the last n tweets from the authenticated user's timeline*/
 #define POST_TWEET "https://api.twitter.com/1.1/statuses/update.json" /* posts tweets */
 #define DESTROY_TWEET "https://api.twitter.com/1.1/statuses/destroy/" /* destroy tweets */
 #define SEARCH_TWEETS "https://api.twitter.com/1.1/search/tweets.json" /* search for tweets*/
+#define FOLLOW "https://api.twitter.com/1.1/friendships/create.json" /*  follow  user*/
+#define UNFOLLOW "https://api.twitter.com/1.1/friendships/destroy.json" /* unfollow  user */
 
-/* Paths to the appropriate oauth urls.*/ 
+/* Paths to the appropriate oauth urls*/ 
 #define REQUEST_TOKEN "https://api.twitter.com/oauth/request_token" /* Request an oauth token.*/
 #define AUTHENTICATE_URL "https://api.twitter.com/oauth/authenticate" /* URL the user needs to visit */
 #define ACCESS_URL "https://api.twitter.com/oauth/access_token" /* Sends the pin to reiceive the final tokens. */
@@ -29,6 +30,8 @@
 /* API keys for the program*/
 #define CONSUMER_KEY "ztmB7Bda6O3EJcz1XYEC3NILX"
 #define CONSUMER_SECRET "PsF8UXmCit7vReiLmWI2oP8uzyK9yJd527aGwPuWsf46dG3SJJ"
+
+#define USER_KEYFILE "user.keyfile"
 
 /* This struct is for information about the authenticating user */
 struct User {
@@ -40,7 +43,6 @@ struct User {
 struct User user;
 
 /* command line flags and arguments */
-static int follow_flag, unfollow_flag; /* These are different because the have no short option associated with them */
 unsigned short int alert_flag = 0; /* plays alerts */
 unsigned short int user_flag = 0;
 unsigned short int search_flag = 0;
@@ -57,6 +59,11 @@ unsigned short int verbose_flag = 0;
 unsigned short int id_flag = 0;
 unsigned short int print_user_flag = 0;
 unsigned short int read_from_stdin = 0;
+unsigned short int follow_flag = 0; /* Follows a user */
+unsigned short int unfollow_flag = 0; /* Unfollows a user */
+unsigned short int followers_flag = 0; /* Prints a list of the followers of the authenticated user*/
+unsigned short int following_flag = 0; /* Prints a list of those the authenticated user follows*/
+
 
 char *filename;
 char *postdata;
@@ -99,12 +106,15 @@ int ttwytter_parse_arguments(int argc, char **argv);
 /* auxiliary functions */
 char *ttwytter_build_url(char *query); 
 char *ttwytter_build_header(char *url, char *url_enc_args);
-int twytter_check_curl_status(int curlstatus);
+int twytter_check_curl_status(int curlstatus, char *query);
 void ttwytter_output(FILE *stream, const char *output, ...);
-size_t static write_to_memory(void *response, size_t size, size_t nmemb, void *userp);
+int twytter_get_char(void);
+
+/* very small auxiliary functions */
 char *remove_first_char(char* string);
 char *remove_newline(char* string);
-int twytter_get_char(void);
+size_t static write_to_memory(void *response, size_t size, size_t nmemb, void *userp);
+
 
 int ttwytter_parse_arguments(int argc, char **argv)
 {
@@ -112,32 +122,30 @@ int ttwytter_parse_arguments(int argc, char **argv)
 
        while (1)
          {
-           static struct option long_options[] =
-             {
-
-              {"follow",     no_argument,          &follow_flag,   1},
-              {"unfollow",   no_argument,          &unfollow_flag, 1},
-               /* These options don't set a flag.
-                  We distinguish them by their indices. */
-              {"alert",      no_argument,        0, 'a'},
-              {"count",      required_argument,  0, 'c'},
-              {"delete",     required_argument,  0, 'd'},
-              {"search",     required_argument,  0, 'e'},
-              {"file",       required_argument,  0, 'f'},
-              {"auth",       no_argument,        0, 'g'},
-              {"help",       no_argument,        0, 'h'},
-              {"id",         no_argument,        0, 'i'},
-              {"timeline",   no_argument,        0, 'l'},
-              {"mentions",   no_argument,        0, 'm'},
-              {"post",       optional_argument,  0, 'p'},
-              {"nometadata", no_argument,        0, 'Q'},
-              {"quiet",      no_argument,        0, 'q'},
-              {"stream",     no_argument,        0, 's'},
-              {"time",       no_argument,        0, 't'},
-              {"user",       optional_argument,  0, 'u'},
-              {"verbose",    no_argument,        0, 'v'},
+          static struct option long_options[] =  {
+              {"alert",      no_argument,        0,              'a'},
+              {"followers",  no_argument,        0,              'b'}, //b is not accepted as a short argument, it's just here to keep track of the option pased
+              {"count",      required_argument,  0,              'c'},
+              {"delete",     required_argument,  0,              'd'},
+              {"search",     required_argument,  0,              'e'},
+              {"file",       required_argument,  0,              'f'},
+              {"auth",       no_argument,        0,              'g'},
+              {"help",       no_argument,        0,              'h'},
+              {"follow",     optional_argument,  0,              'j'},
+              {"id",         no_argument,        0,              'i'},
+              {"unfollow",   optional_argument,  0,              'k'},
+              {"timeline",   no_argument,        0,              'l'},
+              {"mentions",   no_argument,        0,              'm'},
+              {"following",  no_argument,        0,              'n'},
+              {"post",       optional_argument,  0,              'p'},
+              {"nometadata", no_argument,        0,              'Q'},
+              {"quiet",      no_argument,        0,              'q'},
+              {"stream",     no_argument,        0,              's'},
+              {"time",       no_argument,        0,              't'},
+              {"user",       optional_argument,  0,              'u'},
+              {"verbose",    no_argument,        0,              'v'},
               {0, 0, 0, 0}
-             };
+          };
            /* getopt_long stores the option index here. */
            int option_index = 0;
      
@@ -160,10 +168,16 @@ int ttwytter_parse_arguments(int argc, char **argv)
                printf ("\n");
                break;
      
-             case 'a': 
+            case 'a': 
               alert_flag = 1; 
 
+            break;
+
+            case 'b':
+              followers_flag = 1;
+              printf("followers_flag set\n"); 
               break;
+
             case 'c': /* at present -c also accept strings as arguments. This should be restricted to integers. (The type of the argument is always a string) */
               if (strlen(optarg) < 5)
               {
@@ -205,6 +219,48 @@ int ttwytter_parse_arguments(int argc, char **argv)
               break;
             case 'i':
               id_flag = 1;
+              
+              break;
+            case 'j':
+              follow_flag = 1;
+
+              if (optarg == NULL)
+              {
+                read_from_stdin = 1;
+              }
+              else
+              {
+                if (strlen(optarg) < 16)
+                {
+                  postdata = remove_first_char(optarg);
+                }
+                else
+                {
+                  ttwytter_output(stderr, "Username is too long\n"); 
+                  exit(EXIT_SUCCESS);
+                }
+              }
+
+              break;
+            case 'k':
+              unfollow_flag = 1;
+
+              if (optarg == NULL)
+              {
+                read_from_stdin = 1;
+              }
+              else
+              {
+              if (strlen(optarg) < 16)
+                {
+                  postdata = remove_first_char(optarg);
+                }
+                else
+                {
+                  ttwytter_output(stderr, "Username is too long\n"); 
+                  exit(EXIT_SUCCESS);
+                }  
+              }
 
               break; 
             case 'l':
@@ -214,6 +270,11 @@ int ttwytter_parse_arguments(int argc, char **argv)
             case 'm':
               mentions_flag = 1;
 
+              break;
+            case 'n':
+              following_flag = 1;
+              printf("following_flag set\n"); 
+              
               break;
             case 'p':
               post_tweet_flag = 1;
@@ -252,7 +313,7 @@ int ttwytter_parse_arguments(int argc, char **argv)
               time_flag = 1;
 
               break;
-            case 'u':
+            case 'u': /* doesn't work with a space after the u. An extremely irritating bug. */
               user_flag = 1;
 
               if (optarg == NULL)
@@ -276,6 +337,8 @@ int ttwytter_parse_arguments(int argc, char **argv)
               break;
             case 'v':
               verbose_flag = 1;
+
+            break;
      
             case '?':
               printf("usage: ttwytter -c <number> -u <user name> -f <file> -p <\"tweet\"> -ahilmtQqsv\n");
@@ -287,20 +350,19 @@ int ttwytter_parse_arguments(int argc, char **argv)
             default:
               exit(EXIT_FAILURE);
             }
-         }
-     
+         }              
        /* Print any remaining command line arguments (not options). */
-       if (optind < argc)
-         {
-           printf ("non-option ARGV-elements: ");
-           while (optind < argc)
-             printf ("%s ", argv[optind++]);
-           putchar ('\n');
+      if (optind < argc)
+        {
+          printf ("non-option ARGV-elements: ");
+          while (optind < argc)
+            printf ("%s ", argv[optind++]);
+          putchar ('\n');
 
-           return 1;
-         }
+          return 1;
+        }
      
-       return 0;
+      return 0;
 }
 
 int ttwytter_set_user(int argc, char **argv)
@@ -350,10 +412,11 @@ int ttwytter_authenticate() /* This function will authenticate the user */
   char **argv = malloc(0);
   int argc, pincode;
 
-  request_response = ttwytter_request("POST", REQUEST_TOKEN, "oauth_callback=oob"); /* This doesn't actally mean that the method is "POST". */
-  argc = oauth_split_url_parameters(request_response, &argv);                       /* Just that it needed to share code with the rest of the POST code. */
-                                                                                    /* request() should be rewritten to a more natural structure.*/ 
-                                                                                         
+  request_response = ttwytter_request("POST", REQUEST_TOKEN, "oauth_callback=oob");    /* This doesn't actally mean that the method is "POST". */
+                                                                                                   /* Just that it needed to share code with the rest of the POST code. */
+  argc = oauth_split_url_parameters(request_response, &argv);                                      /* request() should be rewritten to a more natural structure.*/ 
+  
+                                                                                              
   /* temporary set the user access token for the final auth-call. These will be replaced by the final tokens after the pin is sent. */
   strcpy(user.user_token, (strrchr(argv[0], '=') + 1));
   strcpy(user.user_secret, (strrchr(argv[1], '=') + 1));
@@ -361,7 +424,7 @@ int ttwytter_authenticate() /* This function will authenticate the user */
   ttwytter_output(stdout, "To authorize, visit this URL, log in to your Twitter account, and enter the pin provided:\n" );
   ttwytter_output(stdout, "%s?%s\n", AUTHENTICATE_URL, argv[0]);
   ttwytter_output(stdout, "Enter PIN: " );
-  scanf("%d", &pincode ); /* Needs to be made safer, without scanf and verifying input. */ 
+  scanf("%d", &pincode ); /* Needs to be made safer, without scanf and verifying input. It now segfaults on wrong PIN. VERY BAD!*/ 
 
   sprintf(oauth_verifier, "oauth_verifier=%d", pincode );
 
@@ -373,7 +436,7 @@ int ttwytter_authenticate() /* This function will authenticate the user */
 
   authenticate_response = ttwytter_request("POST", ACCESS_URL, oauth_verifier);
 
-  /* Copies the correct user keys from the response. This is very sensitive to the output of the response. A better parsing function might be better.*/
+  /* Copies the correct user keys from the response. This is very sensitive to the output of the response. A better parsing function might be needed.*/
 
   argv = malloc(0);
   argc = oauth_split_url_parameters(authenticate_response, &argv);  
@@ -429,12 +492,33 @@ int ttwytter_post_data(char *postdata)
     free(url_enc_args);
   }
 
+  if (follow_flag)
+  {
+    url_enc_args = malloc(sizeof(char) * 512);
+
+    sprintf(url_enc_args, "screen_name=%s", postdata);
+    ttwytter_request("POST", FOLLOW, oauth_url_escape(url_enc_args));
+    //printf("%s\n", postdata);
+
+    free(url_enc_args);
+  }
+
+  if (unfollow_flag)
+  {
+    url_enc_args = malloc(sizeof(char) * 512);
+
+    sprintf(url_enc_args, "screen_name=%s", postdata);
+    ttwytter_request("POST", UNFOLLOW, oauth_url_escape(url_enc_args));
+
+    free(url_enc_args);
+  }
+
   if (destroy_tweet_flag)
   {
     url_enc_args = malloc(sizeof(char) * 512);
 
     sprintf(url_enc_args, "%s.json", postdata);
-    ttwytter_request("POST", DESTROY_TWEET, url_enc_args); /* destroying tweets appends id.json to the url*/
+    ttwytter_request("POST", DESTROY_TWEET, NULL); /* destroying tweets appends id.json to the url*/
 
     free(url_enc_args);
   }
@@ -464,7 +548,7 @@ char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO
   }
   else if (!strcmp(http_method, "POST")) /* The code to build the header should be in its own function.*/
   {
-    if (post_tweet_flag || !strcmp(url, REQUEST_TOKEN) || !strcmp(url, ACCESS_URL))
+    if (post_tweet_flag || follow_flag || unfollow_flag || !strcmp(url, REQUEST_TOKEN) || !strcmp(url, ACCESS_URL))
     {
       struct curl_slist * slist = NULL;
       char * ser_url, **argv, *auth_params, auth_header[1024], *non_auth_params, *final_url, *temp_url;
@@ -513,8 +597,8 @@ char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO
       non_auth_params = oauth_serialize_url_sep(argc, 1, argv, "", 1 );
 
       final_url = (char *) malloc( strlen(url) + strlen(non_auth_params) );
-
       strcpy(final_url, url);
+
       postdata = non_auth_params;
 
       for (int i = 0; i < argc; i++ )
@@ -534,15 +618,11 @@ char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata);
       }
       
-      if (verbose_flag)
-      {
-        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
-      }
     }  
   }
   else
   {
-    ttwytter_output(stderr, "Invalid http-method.\n");
+    ttwytter_output(stderr, "ERROR: Invalid HTTP-method.\n");
 
     return NULL;
   }
@@ -552,11 +632,16 @@ char *ttwytter_request(char *http_method, char *url, char *url_enc_args) /* TODO
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_memory); /* setting a callback function to return the data */
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&response); /* passing the pointer to the response as the callback parameter */ 
 
+  if (verbose_flag)
+  {
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
+  }
+
   int curlstatus = curl_easy_perform(curl); /* Execute the request! */
 
   curl_easy_cleanup(curl);
 
-  if (twytter_check_curl_status(curlstatus))  /* Handles error messages from cURL */
+  if (twytter_check_curl_status(curlstatus, url_enc_args))  /* Handles error messages from cURL */
   {
     return NULL;
   } 
@@ -578,14 +663,14 @@ Data *ttwytter_parse_json(char *response)
 
   if (!root)
   {
-    fprintf(stderr, "Error: on line %d: %s\n", error.line, error.text);
+    fprintf(stderr, "ERROR: Error on line %d: %s\n", error.line, error.text);
     
     return NULL;
   }
 
   if (!json_is_array(root))
   {
-    fprintf(stderr, "Error: root is not an array\n");
+    fprintf(stderr, "ERROR: root is not an array\n");
     json_decref(root);
 
     return NULL;
@@ -599,7 +684,7 @@ Data *ttwytter_parse_json(char *response)
 
     if (!json_is_object(data))
     {
-        fprintf(stderr, "Error: commit data %d is not an object\n", i + 1);
+        fprintf(stderr, "ERROR: Commit data %d is not an object\n", i + 1);
         json_decref(root);
 
         return NULL;
@@ -675,7 +760,7 @@ int ttwytter_read_from_file(char *filename, FILE *f) /* reads input from file wh
     f = fopen(filename, "r");
     if (f == NULL)
     {
-      ttwytter_output(stderr, "Error opening file %s.\n", filename);
+      ttwytter_output(stderr, "ERROR: Could not open file %s.\n", filename);
 
       return 1;
     }
@@ -687,11 +772,9 @@ int ttwytter_read_from_file(char *filename, FILE *f) /* reads input from file wh
   {
     if (user_flag)
     {
-      query = malloc(sizeof(char) * 16);
-
       if (strlen(query) > 16 )
       {
-        ttwytter_output(stderr, "Error: Username must be less than 16 characters. Use -q to suppress this warning.\n", query);
+        ttwytter_output(stderr, "ERROR: Username must be less than 16 characters. Use -q to suppress this warning.\n", query);
         fflush (f);
       }
       else 
@@ -704,25 +787,33 @@ int ttwytter_read_from_file(char *filename, FILE *f) /* reads input from file wh
           }
           else
           {
-            ttwytter_output(stderr, "Error parsing data.\n"); 
+            ttwytter_output(stderr, "ERROR: Error parsing data.\n"); 
           }
         }
         else
         {
-          ttwytter_output(stderr, "Error retreiving data.\n");
+          ttwytter_output(stderr, "ERROR: Did not reiceive data.\n");
         }
       }
     }
     else if (post_tweet_flag)
     {
-      if (strlen(query) < 141)
-      {
+      if (strlen(query) < 141 && *query != '\n')
+      { 
         ttwytter_post_data(remove_newline(query));
       }
-      else
+      else if (strlen(query) > 140)
       {
-        ttwytter_output(stderr, "Tweet is too long and was not posted.\n");
+        ttwytter_output(stderr, "ERROR: Tweet is too long and was not posted.\n");
       }
+      else if (!*query || *query == '\n')
+      {
+       ttwytter_output(stderr, "ERROR: Tweet is empty.\n"); 
+      }  
+    }
+    else if (follow_flag || unfollow_flag)
+    {
+      ttwytter_post_data(remove_newline(query));
     }
   }
   
@@ -820,7 +911,7 @@ int ttwytter_stream() /* This functions listens to any new tweets coming from th
 
 char *ttwytter_build_url(char *screen_name) //screen name is outdated as variable name and only causes confusion, change to query
 {
-  char *url = malloc(sizeof(char) * 256); /* get rid of this magic numner */
+  char *url = malloc(sizeof(char) * 256); /* get rid of this magic number */
 
   if (timeline_flag)
   {
@@ -877,17 +968,44 @@ char *ttwytter_build_url(char *screen_name) //screen name is outdated as variabl
   return url;
 }
 
-int twytter_check_curl_status(int curlstatus)
+int twytter_check_curl_status(int curlstatus, char* query)
 {
-  if (curlstatus != 0) /* this might be rewritten with a case structure, to better distinguish errors */
+  if (curlstatus != 0) /* this might be rewritten with a case structure, to better distinguish errors. Maybe that's not necessary. */
     {
-      if (curlstatus == 22)
+      if (curlstatus == 6)
       {
-        ttwytter_output(stderr, "No such user as %s.\n", query); 
+        ttwytter_output(stderr, "ERROR: Couldn't resolve host.\n");
+      }
+      else if (curlstatus == 7)
+      {
+        ttwytter_output(stderr, "ERROR: Failed to connect to host or proxy.\n");
+      }
+      else if (curlstatus == 22)
+      {
+        if (post_tweet_flag)
+        {
+          ttwytter_output(stderr, "ERROR: Did not post tweet. Perhaps a duplicate?\n");
+        }
+        else if ((query != '\0') && user_flag)
+        {
+          ttwytter_output(stderr, "ERROR: No such user as %s\n", query); /* This doesn't work properly*/
+        }
+        else
+        {
+          ttwytter_output(stderr, "ERROR: Unkown error.\n");
+        }     
+      }
+      else if (curlstatus == 28)
+      {
+        ttwytter_output(stderr, "ERROR: Connection timed out.\n");
+      }
+      else if (curlstatus == 34)
+      {
+        ttwytter_output(stderr, "ERROR: This is an odd error that mainly occurs due to internal confusion.\n"); //I have no idea what this error is, I just thought would be funny to handle it.
       }
       else 
       {
-        ttwytter_output(stderr, "curl_easy_perform terminated with status code %d\n", curlstatus); 
+        ttwytter_output(stderr, "ERROR: curl_easy_perform terminated with status code %d\n", curlstatus); 
       }  
       return 1;
     }
@@ -944,6 +1062,7 @@ int twytter_get_char(void)
 {
     int c;
     int answer = 0;
+    
     while ((c = getchar()) != EOF && c != '\n')
     {
         if (answer == 0 && (c == 'y' || c == 'n' || c == 'N' || c == 'Y'))

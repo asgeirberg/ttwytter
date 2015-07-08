@@ -47,23 +47,23 @@ int main (int argc, char **argv)
           }
           else
           {
-            ttwytter_output(stderr, "Error parsing data.\n");
+            ttwytter_output(stderr, "ERROR: Error parsing data.\n");
           }
         }
         else
         {
-          ttwytter_output(stderr, "Error retreiving data.\n");
+          ttwytter_output(stderr, "ERROR: Error retreiving data.\n");
         }
       }
     }
   }
   else if (read_from_stdin) /* if -u or -p are not given arguments, we listen to stdin */
   { 
-      ttwytter_output(stderr, "Reading from stdin. Use 'ctrl-D' to send EOF\n"); 
+      ttwytter_output(stderr, "Reading from stdin. Use 'ctrl-D' to send EOF.\n"); 
       ttwytter_read_from_file(NULL, stdin);
   }  
 
-  if ((post_tweet_flag && !read_from_stdin) || destroy_tweet_flag)
+  if (((post_tweet_flag || follow_flag || unfollow_flag) && !read_from_stdin) || destroy_tweet_flag)
   {
     //printf("%s\n", postdata); /* This is here for debugging purposes */
     int curl_status = ttwytter_post_data(postdata);

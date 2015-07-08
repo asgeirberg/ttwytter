@@ -1,15 +1,20 @@
 
 Ttwytter is a console-based Twitter client for UNIX, written in C. 
+
 It’s design philosophy is to interact well with the UNIX environment and other UNIX programs. 
+
 See Examples below for examples of what this means.
 
 Homepage: http://mygithub.io
 
-TODO: 	Implement searching for tweets.
+TODO: 	
 	Allow following and unfollowing.
-	Get list of whom (or any user) you follow and list of followers.
+	Get list of whom (or any user) you follow and list of followers.		
+	Implement searching for tweets.
+	Make sure program doesn't segfault on curl failures.
 	Track responses from curl better.
 	Make sure all input is safe.
+	Implement real streaming by using Twitter’s streaming API.
 	Make the makefiles and config scripts.
 
 Dependencies:
@@ -23,6 +28,8 @@ To compile Twytter from source you need the following libraries:
 Installation:
 ============
 
+Actually: gcc ./ttwytter -o ttwytter -ljansson -lcurl -loauth
+
 $ cd ttwytter-$VERSION
 $ ./configure
 $ make
@@ -31,22 +38,56 @@ $ make install
 Usage:
 ============
 
-To be written.
+—-help ‘h’
+—-alert ‘a’
+—-count ‘c’
+—-delete ‘d’
+—-search ‘d’
+—-file ‘f’
+—-auth ‘g’
+—-help ‘h’
+—-id ‘i’
+—-timeline ‘l’
+—-mentions ‘m’
+—-post ‘p’
+—-nometadata ‘Q’
+—-quiet ‘q’
+—-stream ’s’
+—-time ’t’
+—-user ‘u’
+—-verbose ‘v’
+—-follow="@user"
+—-unfollow="@user"
+—-followers
 
 Examples:
 ============
 
+Attention: It should be kept in mind that Twitter’s API might not be happy with some of these, particularly the automated following. This is more to give ideas of what can be done.
+
 Get the last 15 tweets on your timeline and print them to a file:
 ./ttwytter -l -c 15 >> timeline.txt
 
-Get a list of who you follow and unfollow them all (could be filtered somehow too):
-./ttwytter —-followerlist | ./ttwytter —-unfollow
+Get the all the followers from a user, and follow them:
+./ttwytter —followers @user | ./ttwytter -follow
 
-Get tweets from a list of usernames: 
-cat usernames.txt | ./ttwytter —-user 
+Get a list of all the followers of your followers:
+./ttwytter —followers @myusername | ./ttwytter —-followers
+
+Get a list of who you follow according to some criteria and unfollow them:
+./ttwytter —-followers | grep [filter] | ./ttwytter —-unfollow
+
+Get tweets from a list of usernames and output them to a file:
+cat usernames.txt | ./ttwytter —-user >> tweets.txt
 
 Extract all mentions in your timeline and get tweets from them: 
 ./ttwytter -l | grep -o '@[[:alnum:]]*' | sort -u | ./ttwytter —-user -q
+
+Extract all mentions in your timeline and follow  them:
+./ttwytter -l | grep -o '@[[:alnum:]]*' | sort -u | ./ttwytter —-follow
+
+Post tweets from stdin:
+./ttwytter -p
 
 Copyright: 
 ============
